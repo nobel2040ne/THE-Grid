@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>SNU Course Schedule</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="style.css"/>
+
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div class="topbar">
+  <div class="topbar-brand">
+    <span class="topbar-university">SEOUL NATIONAL UNIVERSITY</span>
+    <span class="topbar-title">Course Schedule</span>
+  </div>
+  <div class="topbar-meta">
+    <span lang="en" id="currentUser">GUEST</span>
+  </div>
+</div>
+
+<div class="layout">
+  <!-- TIMETABLE -->
+  <div class="timetable-shell" id="timetableShell">
+    <div class="timetable-wrap">
+      <div class="timetable" id="timetable">
+        <!-- headers -->
+        <div class="day-header" style="font-size:10px;color:rgba(255, 255, 255, 1)">TIME</div>
+        <div class="day-header" lang="en">MON</div>
+        <div class="day-header" lang="en">TUE</div>
+        <div class="day-header" lang="en">WED</div>
+        <div class="day-header" lang="en">THU</div>
+        <div class="day-header" lang="en">FRI</div>
+        <!-- rows injected by JS -->
+      </div>
+    </div>
+  </div>
+
+  <div class="resizer" id="resizer" role="separator" aria-orientation="vertical" aria-label="시간표 너비 조절"></div>
+
+  <!-- SIDE PANEL -->
+  <aside class="side-panel">
+    <div class="panel-header">
+      <div class="panel-title">Add Course</div>
+      <button class="panel-close" id="panelClose" type="button" aria-label="닫기">
+        <svg viewBox="0 0 12 12" aria-hidden="true"><line x1="2" y1="2" x2="10" y2="10"/><line x1="10" y1="2" x2="2" y2="10"/></svg>
+      </button>
+    </div>
+
+    <div class="panel-body">
+      <div class="panel-meta">
+        <div>
+          <div class="panel-meta-label">User</div>
+          <div class="panel-meta-value" id="panelUser">-</div>
+        </div>
+        <button class="btn-ghost" id="logoutBtn" type="button">LOG OUT</button>
+      </div>
+
+      <div class="panel-divider"></div>
+
+      <div class="field-group">
+        <label class="field-label">College</label>
+        <div class="custom-select" data-placeholder="Select college">
+          <select class="native-select" id="profileCollege"></select>
+          <button class="custom-select-trigger" type="button" aria-haspopup="listbox" aria-expanded="false"></button>
+          <div class="custom-select-menu" role="listbox"></div>
+        </div>
+      </div>
+
+      <div class="field-group">
+        <label class="field-label">Department</label>
+        <div class="custom-select" data-placeholder="Select department">
+          <select class="native-select" id="profileDept"></select>
+          <button class="custom-select-trigger" type="button" aria-haspopup="listbox" aria-expanded="false"></button>
+          <div class="custom-select-menu" role="listbox"></div>
+        </div>
+      </div>
+
+      <div class="panel-divider"></div>
+
+      <div class="field-group">
+        <label class="field-label">Semester</label>
+        <div class="custom-select" data-placeholder="Select semester">
+          <select class="native-select" id="semesterSelect"></select>
+          <button class="custom-select-trigger" type="button" aria-haspopup="listbox" aria-expanded="false"></button>
+          <div class="custom-select-menu" role="listbox"></div>
+        </div>
+      </div>
+
+      <div class="field-group">
+        <label class="field-label">Timetable</label>
+        <div class="custom-select" data-placeholder="Select timetable">
+          <select class="native-select" id="timetableSelect"></select>
+          <button class="custom-select-trigger" type="button" aria-haspopup="listbox" aria-expanded="false"></button>
+          <div class="custom-select-menu" role="listbox"></div>
+        </div>
+      </div>
+
+      <div class="panel-actions">
+        <button class="btn-secondary" id="newTable" type="button">NEW</button>
+        <button class="btn-secondary" id="copyTable" type="button">COPY</button>
+        <button class="btn-secondary" id="renameTable" type="button">RENAME</button>
+      </div>
+      <button class="btn-secondary" id="saveImage" type="button">SAVE IMAGE</button>
+
+      <div class="panel-divider"></div>
+
+      <div class="field-group">
+        <label class="field-label">Name</label>
+        <input class="field-input" id="f-name" type="text"/>
+      </div>
+      <div class="field-group">
+        <label class="field-label">Professor</label>
+        <input class="field-input" id="f-prof" type="text"/>
+      </div>
+      <div class="field-group">
+        <label class="field-label">Room</label>
+        <input class="field-input" id="f-room" type="text"/>
+      </div>
+
+      <div class="field-group">
+        <label class="field-label">Credit</label>
+        <input class="field-input" id="f-credit" type="number" min="1" max="6" style="text-align:center"/>
+      </div>
+
+      <div class="field-group">
+        <label class="field-label">Schedule</label>
+        <div class="slot-list" id="slotList">
+          <div class="slot-editor">
+            <div class="slot-inputs">
+              <div class="custom-select" data-placeholder="Select day">
+                <select class="native-select" id="f-day">
+                  <option value="" selected disabled>Select day</option>
+                  <option value="1">Monday</option>
+                  <option value="2">Tuesday</option>
+                  <option value="3">Wednesday</option>
+                  <option value="4">Thursday</option>
+                  <option value="5">Friday</option>
+                </select>
+                <button class="custom-select-trigger" type="button" aria-haspopup="listbox" aria-expanded="false"></button>
+                <div class="custom-select-menu" role="listbox"></div>
+              </div>
+              <div class="slot-time-inputs">
+                <div class="custom-select" data-placeholder="--:--">
+                  <input class="native-time" id="f-start" type="time"/>
+                  <button class="custom-select-trigger" type="button" aria-haspopup="listbox" aria-expanded="false"></button>
+                  <div class="custom-select-menu" role="listbox"></div>
+                </div>
+                <span class="slot-time-sep">–</span>
+                <div class="custom-select" data-placeholder="--:--">
+                  <input class="native-time" id="f-end" type="time"/>
+                  <button class="custom-select-trigger" type="button" aria-haspopup="listbox" aria-expanded="false"></button>
+                  <div class="custom-select-menu" role="listbox"></div>
+                </div>
+              </div>
+            </div>
+            <button class="slot-add-btn" id="addSlotBtn" type="button" aria-label="Add time">+</button>
+          </div>
+          <div class="slot-items" id="slotItems"></div>
+        </div>
+        <div class="slot-actions">
+          <button class="btn-ghost" id="clearSlotsBtn" type="button">CLEAR</button>
+        </div>
+      </div>
+
+      <div class="field-group">
+        <label class="field-label">Color</label>
+        <div class="color-swatches" id="swatches">
+          <div class="swatch sw-navy  selected" data-color="c-navy"  onclick="pickColor(this)"></div>
+          <div class="swatch sw-moss"           data-color="c-moss"  onclick="pickColor(this)"></div>
+          <div class="swatch sw-wine"           data-color="c-wine"  onclick="pickColor(this)"></div>
+          <div class="swatch sw-slate"          data-color="c-slate" onclick="pickColor(this)"></div>
+          <div class="swatch sw-umber"          data-color="c-umber" onclick="pickColor(this)"></div>
+          <div class="swatch sw-teal"           data-color="c-teal"  onclick="pickColor(this)"></div>
+          <div class="swatch sw-flex-red"       data-color="c-flex-red"     onclick="pickColor(this)" title="Flexoki Red"></div>
+          <div class="swatch sw-flex-orange"    data-color="c-flex-orange"  onclick="pickColor(this)" title="Flexoki Orange"></div>
+          <div class="swatch sw-flex-yellow"    data-color="c-flex-yellow"  onclick="pickColor(this)" title="Flexoki Yellow"></div>
+          <div class="swatch sw-flex-green"     data-color="c-flex-green"   onclick="pickColor(this)" title="Flexoki Green"></div>
+          <div class="swatch sw-flex-cyan"      data-color="c-flex-cyan"    onclick="pickColor(this)" title="Flexoki Cyan"></div>
+          <div class="swatch sw-flex-blue"      data-color="c-flex-blue"    onclick="pickColor(this)" title="Flexoki Blue"></div>
+          <div class="swatch sw-flex-purple"    data-color="c-flex-purple"  onclick="pickColor(this)" title="Flexoki Purple"></div>
+          <div class="swatch sw-flex-magenta"   data-color="c-flex-magenta" onclick="pickColor(this)" title="Flexoki Magenta"></div>
+        </div>
+      </div>
+
+      <div class="panel-divider"></div>
+
+      <div class="field-group">
+        <label class="field-label">Palette</label>
+        <div class="custom-select" data-placeholder="Select palette">
+          <select class="native-select" id="paletteSelect">
+            <option value="" selected disabled>Select palette</option>
+            <option value="snu">SNU</option>
+            <option value="flexoki">Flexoki</option>
+            <option value="warm">Warm</option>
+            <option value="cool">Cool</option>
+            <option value="earth">Earth</option>
+            <option value="dawn">Dawn</option>
+            <option value="vivid">Vivid</option>
+            <option value="muted">Muted</option>
+            <option value="stone">Stone</option>
+            <option value="breeze">Breeze</option>
+          </select>
+          <button class="custom-select-trigger" type="button" aria-haspopup="listbox" aria-expanded="false"></button>
+          <div class="custom-select-menu" role="listbox"></div>
+        </div>
+      </div>
+
+      <div class="field-group">
+        <label class="field-label">Card Info</label>
+        <div class="toggle-list" id="cardInfoToggles">
+          <label class="toggle">
+            <input type="checkbox" id="toggleProf" data-info="prof" checked/>
+            <span class="toggle-ui"></span>
+            <span class="toggle-label">Professor</span>
+          </label>
+          <label class="toggle">
+            <input type="checkbox" id="toggleRoom" data-info="room" checked/>
+            <span class="toggle-ui"></span>
+            <span class="toggle-label">Room</span>
+          </label>
+          <label class="toggle">
+            <input type="checkbox" id="toggleCredit" data-info="credit"/>
+            <span class="toggle-ui"></span>
+            <span class="toggle-label">Credit</span>
+          </label>
+        </div>
+        <div class="toggle-help" id="toggleHelp">Max 2 Items</div>
+      </div>
+
+      <button class="btn-add" onclick="addCourse()">ADD</button>
+    </div>
+  </aside>
+</div>
+
+<footer class="app-footer">
+  <div class="footer-inner">
+    <div class="footer-cookie">이 사이트는 설정 저장을 위해 쿠키/로컬 저장소를 사용할 수 있습니다.</div>
+    <div class="footer-credit">Made by <a class="footer-link" id="footerLink" href="https://github.com/nobel2040ne" target="_blank" rel="noopener">nobel2040ne</a></div>
+  </div>
+</footer>
+
+<button class="fab-add" id="fabAdd" type="button" aria-label="강좌 추가">
+  <svg viewBox="0 0 12 12" aria-hidden="true"><line x1="6" y1="2" x2="6" y2="10"/><line x1="2" y1="6" x2="10" y2="6"/></svg>
+</button>
+<div class="panel-backdrop" id="panelBackdrop" aria-hidden="true"></div>
+
+<!-- AUTH MODAL -->
+<div class="auth-backdrop" id="authBackdrop" aria-hidden="true">
+  <div class="auth-card" role="dialog" aria-modal="true" aria-label="Login">
+    <div class="auth-header">Log In</div>
+    <div class="auth-body">
+      <div class="field-group">
+        <label class="field-label">User ID</label>
+        <input class="field-input" id="authId" type="text" autocomplete="username"/>
+      </div>
+      <div class="field-group">
+        <label class="field-label">Password</label>
+        <input class="field-input" id="authPw" type="password" autocomplete="current-password"/>
+      </div>
+      <div class="field-group">
+        <label class="field-label">College</label>
+        <div class="custom-select" data-placeholder="Select college">
+          <select class="native-select" id="authCollege"></select>
+          <button class="custom-select-trigger" type="button" aria-haspopup="listbox" aria-expanded="false"></button>
+          <div class="custom-select-menu" role="listbox"></div>
+        </div>
+      </div>
+      <div class="field-group">
+        <label class="field-label">Department</label>
+        <div class="custom-select" data-placeholder="Select department">
+          <select class="native-select" id="authDept"></select>
+          <button class="custom-select-trigger" type="button" aria-haspopup="listbox" aria-expanded="false"></button>
+          <div class="custom-select-menu" role="listbox"></div>
+        </div>
+      </div>
+      <div class="auth-actions">
+        <button class="btn-add" id="loginBtn" type="button">LOG IN</button>
+        <button class="btn-secondary" id="registerBtn" type="button">REGISTER</button>
+      </div>
+      <div class="auth-hint">ID/비밀번호는 이 브라우저에만 저장됩니다.</div>
+      <div class="auth-status" id="authStatus"></div>
+    </div>
+  </div>
+</div>
+
+<!-- DETAIL MODAL -->
+<div class="backdrop" id="backdrop" onclick="handleBdClick(event)">
+  <div class="detail-card" id="detailCard">
+    <div class="detail-header">
+      <span class="detail-title" id="d-title"></span>
+      <button class="detail-close" onclick="closeDetail()">
+        <svg viewBox="0 0 12 12"><line x1="1" y1="1" x2="11" y2="11"/><line x1="11" y1="1" x2="1" y2="11"/></svg>
+      </button>
+    </div>
+    <div class="detail-rows">
+      <div class="detail-row">
+        <div class="detail-row-label">Name</div>
+        <div class="detail-row-value">
+          <input class="detail-input" id="d-name" type="text"/>
+        </div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-row-label">Professor</div>
+        <div class="detail-row-value">
+          <input class="detail-input" id="d-prof" type="text"/>
+        </div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-row-label">Room</div>
+        <div class="detail-row-value">
+          <input class="detail-input" id="d-room" type="text"/>
+        </div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-row-label">Times</div>
+        <div class="detail-row-value">
+          <div class="slot-list detail-slot-list" id="detailSlotList">
+            <div class="slot-editor detail-slot-editor">
+              <div class="slot-inputs detail-slot-inputs">
+                <div class="custom-select" data-placeholder="Select day">
+                  <select class="native-select" id="d-day">
+                    <option value="1">Monday</option>
+                    <option value="2">Tuesday</option>
+                    <option value="3">Wednesday</option>
+                    <option value="4">Thursday</option>
+                    <option value="5">Friday</option>
+                  </select>
+                  <button class="custom-select-trigger" type="button" aria-haspopup="listbox" aria-expanded="false"></button>
+                  <div class="custom-select-menu" role="listbox"></div>
+                </div>
+                <div class="detail-time-inputs">
+                  <div class="custom-select" data-placeholder="--:--">
+                    <input class="native-time" id="d-start" type="time"/>
+                    <button class="custom-select-trigger" type="button" aria-haspopup="listbox" aria-expanded="false"></button>
+                    <div class="custom-select-menu" role="listbox"></div>
+                  </div>
+                  <span class="detail-time-sep">–</span>
+                  <div class="custom-select" data-placeholder="--:--">
+                    <input class="native-time" id="d-end" type="time"/>
+                    <button class="custom-select-trigger" type="button" aria-haspopup="listbox" aria-expanded="false"></button>
+                    <div class="custom-select-menu" role="listbox"></div>
+                  </div>
+                </div>
+              </div>
+              <button class="slot-add-btn" id="detailAddSlot" type="button" aria-label="Add time">+</button>
+            </div>
+            <div class="slot-items" id="detailSlotItems"></div>
+          </div>
+          <div class="slot-actions detail-slot-actions">
+            <button class="btn-ghost" id="detailClearSlots" type="button">CLEAR</button>
+          </div>
+        </div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-row-label">Credit</div>
+        <div class="detail-row-value">
+          <input class="detail-input" id="d-credit" type="number" min="1" max="6"/>
+        </div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-row-label">Color</div>
+        <div class="detail-row-value">
+          <div class="color-swatches detail-swatches" id="detailSwatches">
+            <div class="swatch sw-navy"         data-color="c-navy"        onclick="pickDetailColor(this)"></div>
+            <div class="swatch sw-moss"         data-color="c-moss"        onclick="pickDetailColor(this)"></div>
+            <div class="swatch sw-wine"         data-color="c-wine"        onclick="pickDetailColor(this)"></div>
+            <div class="swatch sw-slate"        data-color="c-slate"       onclick="pickDetailColor(this)"></div>
+            <div class="swatch sw-umber"        data-color="c-umber"       onclick="pickDetailColor(this)"></div>
+            <div class="swatch sw-teal"         data-color="c-teal"        onclick="pickDetailColor(this)"></div>
+            <div class="swatch sw-flex-red"     data-color="c-flex-red"    onclick="pickDetailColor(this)" title="Flexoki Red"></div>
+            <div class="swatch sw-flex-orange"  data-color="c-flex-orange" onclick="pickDetailColor(this)" title="Flexoki Orange"></div>
+            <div class="swatch sw-flex-yellow"  data-color="c-flex-yellow" onclick="pickDetailColor(this)" title="Flexoki Yellow"></div>
+            <div class="swatch sw-flex-green"   data-color="c-flex-green"  onclick="pickDetailColor(this)" title="Flexoki Green"></div>
+            <div class="swatch sw-flex-cyan"    data-color="c-flex-cyan"   onclick="pickDetailColor(this)" title="Flexoki Cyan"></div>
+            <div class="swatch sw-flex-blue"    data-color="c-flex-blue"   onclick="pickDetailColor(this)" title="Flexoki Blue"></div>
+            <div class="swatch sw-flex-purple"  data-color="c-flex-purple" onclick="pickDetailColor(this)" title="Flexoki Purple"></div>
+            <div class="swatch sw-flex-magenta" data-color="c-flex-magenta" onclick="pickDetailColor(this)" title="Flexoki Magenta"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="detail-footer">
+      <div class="detail-actions">
+        <button class="detail-save" id="d-save" type="button">Save</button>
+        <button class="detail-delete" id="d-del" onclick="deleteCourse()">Delete</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- PROMPT MODAL -->
+<div class="prompt-backdrop" id="promptBackdrop" aria-hidden="true">
+  <div class="prompt-card" role="dialog" aria-modal="true" aria-label="Prompt">
+    <div class="prompt-header" id="promptTitle">Input</div>
+    <div class="prompt-body">
+      <div class="field-group">
+        <label class="field-label" id="promptLabel">Name</label>
+        <input class="field-input" id="promptInput" type="text"/>
+      </div>
+      <div class="prompt-status" id="promptStatus"></div>
+      <div class="prompt-actions">
+        <button class="btn-secondary" id="promptCancel" type="button">Cancel</button>
+        <button class="btn-add" id="promptOk" type="button">OK</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
