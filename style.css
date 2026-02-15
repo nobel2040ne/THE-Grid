@@ -144,10 +144,6 @@ body {
   font-size: 17px;
   color: rgba(255,255,255,0.45);
 }
-.topbar-title {
-  font-size: 17px;
-  color: #ffffff;
-}
 
 .topbar-meta {
   display: flex;
@@ -189,6 +185,14 @@ body {
   height: calc(100% - 6px);
   overflow: auto;
   padding: 24px 20px 24px 28px;
+}
+.timetable-scale {
+  width: 100%;
+  transform-origin: top left;
+}
+.timetable-scale.is-scaled {
+  width: max-content;
+  transform: scale(var(--tt-scale, 1));
 }
 
 .resizer {
@@ -997,18 +1001,13 @@ body.panel-modal-open { overflow: hidden; }
    RESPONSIVE — MOBILE PANEL
 ════════════════════════════ */
 @media (max-width: 980px) {
-  :root {
-    --time-w: 44px;
-    --col-min: 90px;
-  }
   .layout { flex-direction: column; padding-right: 0; }
   .timetable-shell { width: 100%; min-width: 0; height: auto; min-height: 0; }
   .timetable-wrap {
     width: 100%;
     height: auto;
     padding: 16px 12px 12px;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
+    overflow: hidden;
   }
   .resizer { display: none; }
 

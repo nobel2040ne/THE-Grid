@@ -813,7 +813,7 @@ function closePrompt(value) {
 function submitPrompt() {
   const value = promptInput ? promptInput.value : '';
   if (promptRequired && !value.trim()) {
-    if (promptStatus) promptStatus.textContent = '이름을 입력해주세요.';
+    if (promptStatus) promptStatus.textContent = 'Please enter your name.';
     if (promptInput) promptInput.focus();
     return;
   }
@@ -878,7 +878,7 @@ function updateCardInfoToggles() {
     if (!el) return;
     el.disabled = !el.checked && maxed;
   });
-  if (toggleHelp) toggleHelp.textContent = `선택 ${selected.length}/2`;
+  if (toggleHelp) toggleHelp.textContent = `Selected ${selected.length}/2`;
   persistCardInfoSelection();
 }
 
@@ -1480,17 +1480,17 @@ async function handleLogin() {
   const id = authIdInput ? authIdInput.value.trim() : '';
   const pw = authPwInput ? authPwInput.value : '';
   if (!id || !pw) {
-    setAuthStatus('ID와 비밀번호를 입력해주세요.');
+    setAuthStatus('Please enter your ID and password.');
     return;
   }
   const users = getUsers();
   if (!users[id]) {
-    setAuthStatus('존재하지 않는 사용자입니다.');
+    setAuthStatus('User does not exist.');
     return;
   }
   const hash = await hashPassword(pw);
   if (users[id].pw !== hash) {
-    setAuthStatus('비밀번호가 올바르지 않습니다.');
+    setAuthStatus('Incorrect password.');
     return;
   }
   currentUserId = id;
@@ -1507,16 +1507,12 @@ async function handleRegister() {
   const id = authIdInput ? authIdInput.value.trim() : '';
   const pw = authPwInput ? authPwInput.value : '';
   if (!id || !pw) {
-    setAuthStatus('ID와 비밀번호를 입력해주세요.');
-    return;
-  }
-  if (id.length < 3 || pw.length < 4) {
-    setAuthStatus('ID는 3자, 비밀번호는 4자 이상이 필요합니다.');
+    setAuthStatus('Please enter your ID and password.');
     return;
   }
   const users = getUsers();
   if (users[id]) {
-    setAuthStatus('이미 존재하는 사용자입니다.');
+    setAuthStatus('User already exists.');
     return;
   }
   const hash = await hashPassword(pw);
@@ -1637,6 +1633,7 @@ function buildGrid() {
   });
 
   renderDraftOverlays();
+  scheduleFitTimetableForMobile();
 }
 
 function renderDraftOverlays() {
@@ -1676,7 +1673,10 @@ let dragAnchor = null;
 function getDayFromClientX(clientX) {
   if (!timetableEl) return null;
   const rect = timetableEl.getBoundingClientRect();
-  const timeW = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--time-w')) || 56;
+  const timeHeader = timetableEl.querySelector('.day-header');
+  const timeW = timeHeader
+    ? timeHeader.getBoundingClientRect().width
+    : (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--time-w')) || 56);
   const x = clientX - rect.left;
   if (x <= timeW) return null;
   const colW = (rect.width - timeW) / 5;
@@ -1689,10 +1689,12 @@ function getMinsFromClientY(clientY, mode = 'floor') {
   if (!timetableEl) return null;
   const firstLabel = timetableEl.querySelector('.time-label');
   if (!firstLabel) return null;
-  const top = firstLabel.getBoundingClientRect().top;
+  const labelRect = firstLabel.getBoundingClientRect();
+  const top = labelRect.top;
+  const rowH = labelRect.height || ROW_H;
   const offset = clientY - top;
   const totalMins = HOURS * 60;
-  const raw = Math.max(0, Math.min(offset, HOURS * ROW_H)) / ROW_H * 60;
+  const raw = Math.max(0, Math.min(offset, HOURS * rowH)) / rowH * 60;
   const snapped = mode === 'ceil'
     ? Math.ceil(raw / TIME_STEP) * TIME_STEP
     : Math.floor(raw / TIME_STEP) * TIME_STEP;
@@ -1968,7 +1970,7 @@ if (newTableBtn) {
     if (!currentUserId) return;
     const name = await openPrompt({
       title: 'New Timetable',
-      label: '시간표 이름',
+      label: 'Timetable name',
       value: `New Timetable (${currentSemester})`,
       okText: 'Create',
       cancelText: 'Cancel',
@@ -1985,7 +1987,7 @@ if (copyTableBtn) {
     if (!base) return;
     const name = await openPrompt({
       title: 'Copy Timetable',
-      label: '시간표 이름',
+      label: 'Timetable name',
       value: `${base.name} Copy`,
       okText: 'Copy',
       cancelText: 'Cancel',
@@ -2003,7 +2005,7 @@ if (renameTableBtn) {
     if (!current) return;
     const name = await openPrompt({
       title: 'Rename Timetable',
-      label: '새 시간표 이름',
+      label: 'Timetable name',
       value: current.name,
       okText: 'Rename',
       cancelText: 'Cancel',
@@ -2018,6 +2020,8 @@ if (renameTableBtn) {
 const MIN_TIMETABLE_W = 520;
 const layoutEl = document.querySelector('.layout');
 const timetableShell = document.getElementById('timetableShell');
+const timetableWrap = document.getElementById('timetableWrap');
+const timetableScale = document.getElementById('timetableScale');
 const resizer = document.getElementById('resizer');
 const panelEl = document.querySelector('.side-panel');
 const panelClose = document.getElementById('panelClose');
@@ -2025,6 +2029,7 @@ const panelBackdrop = document.getElementById('panelBackdrop');
 const fabAdd = document.getElementById('fabAdd');
 const mobileMq = window.matchMedia ? window.matchMedia('(max-width: 980px)') : null;
 let isResizingWidth = false;
+let mobileFitRafId = 0;
 
 function openPanel() {
   if (!panelEl) return;
@@ -2044,6 +2049,57 @@ function closePanel() {
 if (fabAdd) fabAdd.addEventListener('click', openPanel);
 if (panelClose) panelClose.addEventListener('click', closePanel);
 if (panelBackdrop) panelBackdrop.addEventListener('click', closePanel);
+
+function resetMobileTimetableScale() {
+  if (!timetableWrap || !timetableScale) return;
+  timetableScale.classList.remove('is-scaled');
+  timetableScale.style.removeProperty('--tt-scale');
+  timetableWrap.style.height = '';
+}
+
+function scheduleFitTimetableForMobile() {
+  if (mobileFitRafId) cancelAnimationFrame(mobileFitRafId);
+  mobileFitRafId = requestAnimationFrame(() => {
+    mobileFitRafId = 0;
+    fitTimetableForMobile();
+  });
+}
+
+function fitTimetableForMobile() {
+  if (!timetableEl || !timetableWrap || !timetableScale) return;
+  if (!mobileMq || !mobileMq.matches) {
+    resetMobileTimetableScale();
+    return;
+  }
+
+  const EDGE_SAFE_PX = 2;
+  const wrapStyle = getComputedStyle(timetableWrap);
+  const padLeft = parseFloat(wrapStyle.paddingLeft) || 0;
+  const padRight = parseFloat(wrapStyle.paddingRight) || 0;
+  const padTop = parseFloat(wrapStyle.paddingTop) || 0;
+  const padBottom = parseFloat(wrapStyle.paddingBottom) || 0;
+  const innerWidth = timetableWrap.clientWidth - padLeft - padRight;
+  const safeInnerWidth = Math.max(0, innerWidth - EDGE_SAFE_PX);
+  const tableStyle = getComputedStyle(timetableEl);
+  const borderX = (parseFloat(tableStyle.borderLeftWidth) || 0) + (parseFloat(tableStyle.borderRightWidth) || 0);
+  const borderY = (parseFloat(tableStyle.borderTopWidth) || 0) + (parseFloat(tableStyle.borderBottomWidth) || 0);
+  const baseWidth = timetableEl.scrollWidth + borderX;
+  const baseHeight = timetableEl.scrollHeight + borderY;
+  if (!(safeInnerWidth > 0 && baseWidth > 0 && baseHeight > 0)) return;
+
+  const scale = Math.min(1, safeInnerWidth / baseWidth);
+  const currentScale = parseFloat(timetableScale.style.getPropertyValue('--tt-scale')) || 1;
+  if (!timetableScale.classList.contains('is-scaled') || Math.abs(currentScale - scale) > 0.0005) {
+    timetableScale.style.setProperty('--tt-scale', String(scale));
+    timetableScale.classList.add('is-scaled');
+  }
+
+  const targetHeight = Math.ceil(baseHeight * scale + padTop + padBottom);
+  const currentHeight = parseFloat(timetableWrap.style.height) || 0;
+  if (Math.abs(currentHeight - targetHeight) > 0.5) {
+    timetableWrap.style.height = `${targetHeight}px`;
+  }
+}
 
 function clampTimetableWidth(width) {
   if (!layoutEl || !timetableShell || !resizer) return;
@@ -2065,6 +2121,7 @@ function resetTimetableSizing() {
     timetableShell.style.flex = '';
     timetableShell.dataset.fixedWidth = 'false';
   }
+  resetMobileTimetableScale();
 }
 
 if (resizer && layoutEl && timetableShell) {
@@ -2097,6 +2154,7 @@ window.addEventListener('resize', () => {
     const current = parseFloat(timetableShell.style.width);
     if (Number.isFinite(current)) clampTimetableWidth(current);
   }
+  scheduleFitTimetableForMobile();
 });
 
 if (mobileMq) {
@@ -2106,10 +2164,23 @@ if (mobileMq) {
       resetTimetableSizing();
     } else {
       closePanel();
+      resetMobileTimetableScale();
     }
+    scheduleFitTimetableForMobile();
   };
   handleMobileMq();
   mobileMq.addEventListener('change', handleMobileMq);
+}
+
+const timetableFitObserver = typeof ResizeObserver === 'undefined'
+  ? null
+  : new ResizeObserver(() => {
+      scheduleFitTimetableForMobile();
+    });
+if (timetableFitObserver && timetableWrap) timetableFitObserver.observe(timetableWrap);
+if (timetableFitObserver && timetableEl) timetableFitObserver.observe(timetableEl);
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', scheduleFitTimetableForMobile);
 }
 
 function initApp() {
@@ -2146,3 +2217,5 @@ document.addEventListener('keydown', (e) => {
 
 // ── Init ─────────────────────────────────────────────
 initApp();
+scheduleFitTimetableForMobile();
+requestAnimationFrame(() => scheduleFitTimetableForMobile());
