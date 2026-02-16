@@ -55,20 +55,6 @@ Timetable/
       └─ YoonBlackFit77.ttf
 ```
 
-## Execution Guide
-
-### Option 1: Direct file execution
-
-- Open `index.html` in a browser.
-
-### Option 2: Local server execution (recommended)
-
-```bash
-python3 -m http.server 5173
-```
-
-Access URL: `http://localhost:5173`
-
 ## Standard User Workflow
 
 1. Create an account via `REGISTER` and authenticate with `LOG IN`.
