@@ -3,7 +3,9 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-<title>SNU Course Schedule</title>
+<title>THE Grid</title>
+<link rel="icon" type="image/svg+xml" href="assets/favicon.ico"/>
+<link rel="shortcut icon" href="assets/favicon.ico"/>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
 <link rel="stylesheet" href="style.css"/>
@@ -14,7 +16,7 @@
 <!-- TOP BAR -->
 <div class="topbar">
   <div class="topbar-brand">
-    <span class="topbar-university">SNU Grid</span>
+    <span class="topbar-university">THE Grid</span>
   </div>
   <div class="topbar-meta">
     <span lang="en" id="currentUser">GUEST</span>
@@ -58,26 +60,6 @@
           <div class="panel-meta-value" id="panelUser">-</div>
         </div>
         <button class="btn-ghost" id="logoutBtn" type="button">LOG OUT</button>
-      </div>
-
-      <div class="panel-divider"></div>
-
-      <div class="field-group">
-        <label class="field-label">College</label>
-        <div class="custom-select" data-placeholder="Select college">
-          <select class="native-select" id="profileCollege"></select>
-          <button class="custom-select-trigger" type="button" aria-haspopup="listbox" aria-expanded="false"></button>
-          <div class="custom-select-menu" role="listbox"></div>
-        </div>
-      </div>
-
-      <div class="field-group">
-        <label class="field-label">Department</label>
-        <div class="custom-select" data-placeholder="Select department">
-          <select class="native-select" id="profileDept"></select>
-          <button class="custom-select-trigger" type="button" aria-haspopup="listbox" aria-expanded="false"></button>
-          <div class="custom-select-menu" role="listbox"></div>
-        </div>
       </div>
 
       <div class="panel-divider"></div>
@@ -261,22 +243,6 @@
       <div class="field-group">
         <label class="field-label">Password</label>
         <input class="field-input" id="authPw" type="password" autocomplete="current-password"/>
-      </div>
-      <div class="field-group">
-        <label class="field-label">College</label>
-        <div class="custom-select" data-placeholder="Select college">
-          <select class="native-select" id="authCollege"></select>
-          <button class="custom-select-trigger" type="button" aria-haspopup="listbox" aria-expanded="false"></button>
-          <div class="custom-select-menu" role="listbox"></div>
-        </div>
-      </div>
-      <div class="field-group">
-        <label class="field-label">Department</label>
-        <div class="custom-select" data-placeholder="Select department">
-          <select class="native-select" id="authDept"></select>
-          <button class="custom-select-trigger" type="button" aria-haspopup="listbox" aria-expanded="false"></button>
-          <div class="custom-select-menu" role="listbox"></div>
-        </div>
       </div>
       <div class="auth-actions">
         <button class="btn-add" id="loginBtn" type="button">LOG IN</button>

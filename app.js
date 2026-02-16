@@ -116,162 +116,6 @@ const SAMPLE_TABLES = [
   },
 ];
 
-const SNU_COLLEGES = [
-  {
-    name: '인문대학',
-    departments: [
-      '국어국문학과',
-      '중어중문학과',
-      '영어영문학과',
-      '불어불문학과',
-      '독어독문학과',
-      '노어노문학과',
-      '서어서문학과',
-      '아시아언어문명학부',
-      '언어학과',
-      '역사학부',
-      '철학과',
-      '종교학과',
-      '미학과',
-      '고고미술사학과',
-    ],
-  },
-  {
-    name: '사회과학대학',
-    departments: [
-      '정치외교학부(정치학전공)',
-      '정치외교학부(외교학전공)',
-      '경제학부',
-      '사회학과',
-      '인류학과',
-      '심리학과',
-      '지리학과',
-      '사회복지학과',
-      '언론정보학과',
-    ],
-  },
-  {
-    name: '자연과학대학',
-    departments: [
-      '수리과학부',
-      '통계학과',
-      '물리천문학부(물리학전공)',
-      '물리천문학부(천문학전공)',
-      '화학부',
-      '생명과학부',
-      '지구환경과학부',
-    ],
-  },
-  {
-    name: '간호대학',
-    departments: ['간호학과'],
-  },
-  {
-    name: '경영대학',
-    departments: ['경영학과'],
-  },
-  {
-    name: '공과대학',
-    departments: [
-      '건설환경공학부',
-      '기계공학부',
-      '항공우주공학과',
-      '재료공학부',
-      '전기·정보공학부',
-      '컴퓨터공학부',
-      '화학생물공학부',
-      '건축학과',
-      '산업공학과',
-      '에너지자원공학과',
-      '원자핵공학과',
-      '조선해양공학과',
-    ],
-  },
-  {
-    name: '농업생명과학대학',
-    departments: [
-      '식물생산과학부',
-      '산림과학부',
-      '응용생물화학부',
-      '식품·동물생명공학부',
-      '바이오시스템·소재학부',
-      '조경·지역시스템공학부',
-      '농경제사회학부',
-      '스마트시스템과학과',
-    ],
-  },
-  {
-    name: '미술대학',
-    departments: [
-      '동양화과',
-      '서양화과',
-      '조소과',
-      '공예과',
-      '디자인과',
-    ],
-  },
-  {
-    name: '사범대학',
-    departments: [
-      '교육학과',
-      '국어교육과',
-      '영어교육과',
-      '불어교육과',
-      '독어교육과',
-      '사회교육과',
-      '역사교육과',
-      '지리교육과',
-      '윤리교육과',
-      '수학교육과',
-      '물리교육과',
-      '화학교육과',
-      '생물교육과',
-      '지구과학교육과',
-      '체육교육과',
-    ],
-  },
-  {
-    name: '생활과학대학',
-    departments: [
-      '소비자아동학부(소비자학전공)',
-      '소비자아동학부(아동가족학전공)',
-      '식품영양학과',
-      '의류학과',
-    ],
-  },
-  {
-    name: '수의과대학',
-    departments: ['수의예과', '수의학과'],
-  },
-  {
-    name: '약학대학',
-    departments: ['약학과', '제약학과'],
-  },
-  {
-    name: '음악대학',
-    departments: [
-      '성악과',
-      '작곡과',
-      '음악학과',
-      '피아노과',
-      '관현악과',
-      '국악과',
-    ],
-  },
-  {
-    name: '의과대학',
-    departments: ['의예과', '의학과'],
-  },
-  {
-    name: '자유전공학부',
-    departments: ['자유전공학부'],
-  },
-  {
-    name: '첨단융합학부',
-    departments: ['첨단융합학부'],
-  },
-];
-
 function cloneCourses(list) {
   return list.map((c, i) => {
     const slots = normalizeSlots(Array.isArray(c.slots)
@@ -381,10 +225,6 @@ const promptInput = document.getElementById('promptInput');
 const promptCancel = document.getElementById('promptCancel');
 const promptOk = document.getElementById('promptOk');
 const promptStatus = document.getElementById('promptStatus');
-const profileCollege = document.getElementById('profileCollege');
-const profileDept = document.getElementById('profileDept');
-const authCollege = document.getElementById('authCollege');
-const authDept = document.getElementById('authDept');
 const paletteSelect = document.getElementById('paletteSelect');
 const daySelect = document.getElementById('f-day');
 const startInput = document.getElementById('f-start');
@@ -757,10 +597,6 @@ document.addEventListener('click', (e) => {
 
 initCustomSelect(semesterSelect, { placeholder: 'Select semester' });
 initCustomSelect(timetableSelect, { placeholder: 'Select timetable' });
-initCustomSelect(profileCollege, { placeholder: 'Select college' });
-initCustomSelect(profileDept, { placeholder: 'Select department' });
-initCustomSelect(authCollege, { placeholder: 'Select college' });
-initCustomSelect(authDept, { placeholder: 'Select department' });
 initCustomSelect(paletteSelect, { placeholder: 'Select palette' });
 initCustomSelect(daySelect, { placeholder: 'Select day' });
 initCustomSelect(detailDaySelect, { placeholder: 'Select day' });
@@ -1191,79 +1027,6 @@ async function exportTimetableImage() {
   img.src = url;
 }
 
-
-function populateCollegeSelect(selectEl) {
-  if (!selectEl) return;
-  selectEl.innerHTML = '';
-  const placeholder = document.createElement('option');
-  placeholder.value = '';
-  placeholder.textContent = 'Select college';
-  placeholder.disabled = true;
-  placeholder.selected = true;
-  selectEl.appendChild(placeholder);
-  SNU_COLLEGES.forEach((college) => {
-    const opt = document.createElement('option');
-    opt.value = college.name;
-    opt.textContent = college.name;
-    selectEl.appendChild(opt);
-  });
-  refreshCustomPicker(selectEl);
-}
-
-function populateDeptSelect(selectEl, collegeName, selectedValue = '') {
-  if (!selectEl) return;
-  selectEl.innerHTML = '';
-  const placeholder = document.createElement('option');
-  placeholder.value = '';
-  placeholder.textContent = collegeName ? 'Select department' : 'Select college first';
-  placeholder.disabled = true;
-  placeholder.selected = true;
-  selectEl.appendChild(placeholder);
-  const college = SNU_COLLEGES.find((item) => item.name === collegeName);
-  if (college) {
-    college.departments.forEach((dept) => {
-      const opt = document.createElement('option');
-      opt.value = dept;
-      opt.textContent = dept;
-      selectEl.appendChild(opt);
-    });
-  }
-  selectEl.value = selectedValue || '';
-  refreshCustomPicker(selectEl);
-}
-
-function loadProfileUI(userId) {
-  if (!userId) return;
-  const users = getUsers();
-  const profile = users[userId] || {};
-  if (profileCollege) {
-    profileCollege.value = profile.college || '';
-    refreshCustomPicker(profileCollege);
-  }
-  populateDeptSelect(profileDept, profile.college || '', profile.dept || '');
-}
-
-function saveProfileFromPanel() {
-  if (!currentUserId) return;
-  const users = getUsers();
-  if (!users[currentUserId]) return;
-  users[currentUserId].college = profileCollege ? profileCollege.value : '';
-  users[currentUserId].dept = profileDept ? profileDept.value : '';
-  setUsers(users);
-}
-
-if (profileCollege) {
-  profileCollege.addEventListener('change', () => {
-    populateDeptSelect(profileDept, profileCollege.value);
-    saveProfileFromPanel();
-  });
-}
-if (profileDept) profileDept.addEventListener('change', saveProfileFromPanel);
-if (authCollege) {
-  authCollege.addEventListener('change', () => {
-    populateDeptSelect(authDept, authCollege.value);
-  });
-}
 if (paletteSelect) {
   paletteSelect.addEventListener('change', () => {
     applyPalette(paletteSelect.value);
@@ -1275,11 +1038,6 @@ if (detailNameInput) {
     if (title) title.textContent = detailNameInput.value.trim() || '';
   });
 }
-populateCollegeSelect(profileCollege);
-populateCollegeSelect(authCollege);
-populateDeptSelect(profileDept, '');
-populateDeptSelect(authDept, '');
-
 // ── Helpers ─────────────────────────────────────────
 function timeToMins(t) {
   const [h,m] = t.split(':').map(Number);
@@ -1498,7 +1256,6 @@ async function handleLogin() {
   setUserUI(id);
   hideAuth();
   ensureUserData(id);
-  loadProfileUI(id);
   populateSemesterSelect();
   loadCurrentTimetable();
 }
@@ -1516,16 +1273,13 @@ async function handleRegister() {
     return;
   }
   const hash = await hashPassword(pw);
-  const college = authCollege ? authCollege.value : '';
-  const dept = authDept ? authDept.value : '';
-  users[id] = { pw: hash, college, dept };
+  users[id] = { pw: hash };
   setUsers(users);
   currentUserId = id;
   setSessionUser(id);
   setUserUI(id);
   ensureUserData(id);
   hideAuth();
-  loadProfileUI(id);
   populateSemesterSelect();
   loadCurrentTimetable();
 }
@@ -1538,11 +1292,6 @@ function handleLogout() {
   courses = [];
   nextId = 1;
   setUserUI(null);
-  if (profileCollege) {
-    profileCollege.value = '';
-    refreshCustomPicker(profileCollege);
-  }
-  populateDeptSelect(profileDept, '');
   if (paletteSelect) {
     paletteSelect.value = '';
     refreshCustomPicker(paletteSelect);
@@ -2192,15 +1941,9 @@ function initApp() {
     currentUserId = sessionUser;
     setUserUI(sessionUser);
     hideAuth();
-    loadProfileUI(sessionUser);
     loadCurrentTimetable();
   } else {
     clearSessionUser();
-    if (profileCollege) {
-      profileCollege.value = '';
-      refreshCustomPicker(profileCollege);
-    }
-    populateDeptSelect(profileDept, '');
     showAuth();
     buildGrid();
   }
