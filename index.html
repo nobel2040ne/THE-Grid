@@ -2,26 +2,17 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no"/>
 <title>THE Grid</title>
 <link rel="icon" type="image/svg+xml" href="assets/favicon.ico"/>
 <link rel="shortcut icon" href="assets/favicon.ico"/>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
 <link rel="stylesheet" href="style.css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer"/>
 
 </head>
 <body>
-
-<!-- TOP BAR -->
-<div class="topbar">
-  <div class="topbar-brand">
-    <span class="topbar-university">THE Grid</span>
-  </div>
-  <div class="topbar-meta">
-    <span lang="en" id="currentUser">GUEST</span>
-  </div>
-</div>
 
 <div class="layout">
   <!-- TIMETABLE -->
@@ -30,7 +21,7 @@
       <div class="timetable-scale" id="timetableScale">
         <div class="timetable" id="timetable">
         <!-- headers -->
-        <div class="day-header" style="font-size:10px;color:rgba(255, 255, 255, 1)">TIME</div>
+        <div class="day-header">TIME</div>
         <div class="day-header" lang="en">MON</div>
         <div class="day-header" lang="en">TUE</div>
         <div class="day-header" lang="en">WED</div>
@@ -87,8 +78,6 @@
         <button class="btn-secondary" id="copyTable" type="button">COPY</button>
         <button class="btn-secondary" id="renameTable" type="button">RENAME</button>
       </div>
-      <button class="btn-secondary" id="saveImage" type="button">SAVE IMAGE</button>
-
       <div class="panel-divider"></div>
 
       <div class="field-group">
@@ -166,10 +155,42 @@
           <div class="swatch sw-flex-blue"      data-color="c-flex-blue"    onclick="pickColor(this)" title="Flexoki Blue"></div>
           <div class="swatch sw-flex-purple"    data-color="c-flex-purple"  onclick="pickColor(this)" title="Flexoki Purple"></div>
           <div class="swatch sw-flex-magenta"   data-color="c-flex-magenta" onclick="pickColor(this)" title="Flexoki Magenta"></div>
+          <div class="swatch sw-graphite"       data-color="c-graphite" onclick="pickColor(this)" title="Graphite"></div>
+          <div class="swatch sw-steel"          data-color="c-steel" onclick="pickColor(this)" title="Steel"></div>
+          <div class="swatch sw-ash"            data-color="c-ash" onclick="pickColor(this)" title="Ash"></div>
+          <div class="swatch sw-fog"            data-color="c-fog" onclick="pickColor(this)" title="Fog"></div>
+          <div class="swatch sw-pearl"          data-color="c-pearl" onclick="pickColor(this)" title="Pearl"></div>
+          <div class="swatch sw-smoke"          data-color="c-smoke" onclick="pickColor(this)" title="Smoke"></div>
         </div>
       </div>
 
       <div class="panel-divider"></div>
+
+      <div class="field-group">
+        <label class="field-label">Header</label>
+        <div class="color-swatches" id="headerSwatches">
+          <div class="swatch sw-navy selected" data-color="c-navy" onclick="pickHeaderColor(this)"></div>
+          <div class="swatch sw-moss" data-color="c-moss" onclick="pickHeaderColor(this)"></div>
+          <div class="swatch sw-wine" data-color="c-wine" onclick="pickHeaderColor(this)"></div>
+          <div class="swatch sw-slate" data-color="c-slate" onclick="pickHeaderColor(this)"></div>
+          <div class="swatch sw-umber" data-color="c-umber" onclick="pickHeaderColor(this)"></div>
+          <div class="swatch sw-teal" data-color="c-teal" onclick="pickHeaderColor(this)"></div>
+          <div class="swatch sw-flex-red" data-color="c-flex-red" onclick="pickHeaderColor(this)" title="Flexoki Red"></div>
+          <div class="swatch sw-flex-orange" data-color="c-flex-orange" onclick="pickHeaderColor(this)" title="Flexoki Orange"></div>
+          <div class="swatch sw-flex-yellow" data-color="c-flex-yellow" onclick="pickHeaderColor(this)" title="Flexoki Yellow"></div>
+          <div class="swatch sw-flex-green" data-color="c-flex-green" onclick="pickHeaderColor(this)" title="Flexoki Green"></div>
+          <div class="swatch sw-flex-cyan" data-color="c-flex-cyan" onclick="pickHeaderColor(this)" title="Flexoki Cyan"></div>
+          <div class="swatch sw-flex-blue" data-color="c-flex-blue" onclick="pickHeaderColor(this)" title="Flexoki Blue"></div>
+          <div class="swatch sw-flex-purple" data-color="c-flex-purple" onclick="pickHeaderColor(this)" title="Flexoki Purple"></div>
+          <div class="swatch sw-flex-magenta" data-color="c-flex-magenta" onclick="pickHeaderColor(this)" title="Flexoki Magenta"></div>
+          <div class="swatch sw-graphite" data-color="c-graphite" onclick="pickHeaderColor(this)" title="Graphite"></div>
+          <div class="swatch sw-steel" data-color="c-steel" onclick="pickHeaderColor(this)" title="Steel"></div>
+          <div class="swatch sw-ash" data-color="c-ash" onclick="pickHeaderColor(this)" title="Ash"></div>
+          <div class="swatch sw-fog" data-color="c-fog" onclick="pickHeaderColor(this)" title="Fog"></div>
+          <div class="swatch sw-pearl" data-color="c-pearl" onclick="pickHeaderColor(this)" title="Pearl"></div>
+          <div class="swatch sw-smoke" data-color="c-smoke" onclick="pickHeaderColor(this)" title="Smoke"></div>
+        </div>
+      </div>
 
       <div class="field-group">
         <label class="field-label">Palette</label>
@@ -184,6 +205,7 @@
             <option value="dawn">Dawn</option>
             <option value="vivid">Vivid</option>
             <option value="muted">Muted</option>
+            <option value="gray">Gray</option>
             <option value="stone">Stone</option>
             <option value="breeze">Breeze</option>
           </select>
@@ -219,16 +241,21 @@
   </aside>
 </div>
 
-<footer class="app-footer">
-  <div class="footer-inner">
-    <div class="footer-cookie">This site may use local storage to save your preferences.</div>
-    <div class="footer-credit">Made by <a class="footer-link" id="footerLink" href="https://github.com/nobel2040ne" target="_blank" rel="noopener">nobel2040ne</a></div>
-  </div>
-</footer>
+<a class="fab-github" href="https://github.com/nobel2040ne" target="_blank" rel="noopener" aria-label="GitHub">
+  <svg viewBox="0 0 16 16" aria-hidden="true">
+    <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
+  </svg>
+</a>
 
-<button class="fab-add" id="fabAdd" type="button" aria-label="강좌 추가">
-  <svg viewBox="0 0 12 12" aria-hidden="true"><line x1="6" y1="2" x2="6" y2="10"/><line x1="2" y1="6" x2="10" y2="6"/></svg>
-</button>
+<div class="fab-duo" role="group" aria-label="Quick actions">
+  <button class="fab-save" id="fabSave" type="button" aria-label="시간표 이미지 저장">
+    <i class="fa-solid fa-camera-retro" aria-hidden="true"></i>
+  </button>
+  <span class="fab-divider" aria-hidden="true"></span>
+  <button class="fab-add" id="fabAdd" type="button" aria-label="강좌 추가">
+    <svg viewBox="0 0 12 12" aria-hidden="true"><line x1="6" y1="2" x2="6" y2="10"/><line x1="2" y1="6" x2="10" y2="6"/></svg>
+  </button>
+</div>
 <div class="panel-backdrop" id="panelBackdrop" aria-hidden="true"></div>
 
 <!-- AUTH MODAL -->
@@ -346,6 +373,12 @@
             <div class="swatch sw-flex-blue"    data-color="c-flex-blue"   onclick="pickDetailColor(this)" title="Flexoki Blue"></div>
             <div class="swatch sw-flex-purple"  data-color="c-flex-purple" onclick="pickDetailColor(this)" title="Flexoki Purple"></div>
             <div class="swatch sw-flex-magenta" data-color="c-flex-magenta" onclick="pickDetailColor(this)" title="Flexoki Magenta"></div>
+            <div class="swatch sw-graphite" data-color="c-graphite" onclick="pickDetailColor(this)" title="Graphite"></div>
+            <div class="swatch sw-steel" data-color="c-steel" onclick="pickDetailColor(this)" title="Steel"></div>
+            <div class="swatch sw-ash" data-color="c-ash" onclick="pickDetailColor(this)" title="Ash"></div>
+            <div class="swatch sw-fog" data-color="c-fog" onclick="pickDetailColor(this)" title="Fog"></div>
+            <div class="swatch sw-pearl" data-color="c-pearl" onclick="pickDetailColor(this)" title="Pearl"></div>
+            <div class="swatch sw-smoke" data-color="c-smoke" onclick="pickDetailColor(this)" title="Smoke"></div>
           </div>
         </div>
       </div>

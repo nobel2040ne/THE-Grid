@@ -55,6 +55,10 @@ const PALETTES = {
     label: 'Muted',
     colors: ['c-moss', 'c-teal', 'c-umber', 'c-slate', 'c-navy', 'c-wine'],
   },
+  gray: {
+    label: 'Gray',
+    colors: ['c-graphite', 'c-steel', 'c-ash', 'c-fog', 'c-pearl', 'c-smoke'],
+  },
   stone: {
     label: 'Stone',
     colors: ['c-slate', 'c-navy', 'c-moss', 'c-umber', 'c-wine', 'c-teal'],
@@ -79,6 +83,12 @@ const COLOR_ACCENTS = {
   'c-flex-blue': '#205EA6',
   'c-flex-purple': '#5E409D',
   'c-flex-magenta': '#A02F6F',
+  'c-graphite': '#2F3136',
+  'c-steel': '#4F5560',
+  'c-ash': '#6B717C',
+  'c-fog': '#8A909A',
+  'c-pearl': '#ADB3BB',
+  'c-smoke': '#8D857D',
 };
 
 // ── Storage / Auth ───────────────────────────────────
@@ -86,6 +96,7 @@ const USERS_KEY = 'tt_users_v1';
 const SESSION_KEY = 'tt_session_v1';
 const DATA_KEY_PREFIX = 'tt_data_v1_';
 const CARD_INFO_KEY = 'tt_card_info_v1';
+const HEADER_COLOR_KEY = 'tt_header_color_v1';
 const CARD_INFO_ORDER = ['prof', 'room', 'credit'];
 const CARD_INFO_DEFAULT = ['prof', 'room'];
 const SEMESTERS = ['1-1','1-2','2-1','2-2','3-1','3-2','4-1','4-2'];
@@ -94,24 +105,7 @@ const SAMPLE_TABLES = [
   {
     name: 'Sample A',
     courses: [
-      { name:'통계학실험', prof:'', room:'25-204', day:1, start:'09:00', end:'10:30', credit:1, color:'c-flex-red' },
-      { name:'물리학 1', prof:'', room:'26-B101', day:2, start:'10:00', end:'11:30', credit:3, color:'c-flex-blue' },
-      { name:'물리학실험 1', prof:'', room:'26-304', day:3, start:'09:00', end:'11:00', credit:1, color:'c-flex-green' },
-      { name:'대학영어 1', prof:'', room:'2-101', day:5, start:'10:00', end:'11:00', credit:2, color:'c-flex-cyan' },
-      { name:'통계학', prof:'', room:'26-B102', day:1, start:'12:00', end:'13:00', credit:3, color:'c-flex-yellow' },
-      { name:'컴퓨터의 개념 및 실습', prof:'', room:'302-408', day:2, start:'13:00', end:'15:00', credit:3, color:'c-flex-orange' },
-      { name:'수학 1', prof:'', room:'25-104', day:1, start:'14:00', end:'15:00', credit:3, color:'c-flex-green' },
-      { name:'대학 글쓰기 1', prof:'', room:'9-105', day:2, start:'15:00', end:'16:00', credit:2, color:'c-flex-purple' },
-    ],
-  },
-  {
-    name: 'Sample B',
-    courses: [
-      { name:'고급 알고리즘', prof:'김지원', room:'IT관 404', day:1, start:'10:00', end:'12:15', credit:3, color:'c-navy' },
-      { name:'인공지능 개론', prof:'박세은', room:'공학관 302', day:3, start:'13:00', end:'15:15', credit:3, color:'c-wine' },
-      { name:'데이터베이스', prof:'이준혁', room:'정보관 201', day:2, start:'14:00', end:'15:30', credit:2, color:'c-moss' },
-      { name:'운영체제', prof:'최민서', room:'IT관 101', day:4, start:'11:00', end:'12:30', credit:2, color:'c-slate' },
-      { name:'선형대수', prof:'정하준', room:'자연대 102', day:5, start:'09:00', end:'10:30', credit:3, color:'c-umber' },
+      { name:'강의명', prof:'교수님', room:'강의실', day:1, start:'09:00', end:'10:30', credit:1, color:'c-flex-red' },
     ],
   },
 ];
@@ -189,6 +183,7 @@ async function hashPassword(pw) {
 let courses = [];
 let nextId = 1;
 let selectedColor = 'c-navy';
+let headerColor = 'c-navy';
 let detailSelectedColor = null;
 let cardInfoSelection = CARD_INFO_DEFAULT.slice();
 let draftSlots = [];
@@ -213,11 +208,13 @@ const authStatus = document.getElementById('authStatus');
 const loginBtn = document.getElementById('loginBtn');
 const registerBtn = document.getElementById('registerBtn');
 const swatches = document.getElementById('swatches');
+const headerSwatches = document.getElementById('headerSwatches');
 const toggleProf = document.getElementById('toggleProf');
 const toggleRoom = document.getElementById('toggleRoom');
 const toggleCredit = document.getElementById('toggleCredit');
 const toggleHelp = document.getElementById('toggleHelp');
 const saveImageBtn = document.getElementById('saveImage');
+const fabSave = document.getElementById('fabSave');
 const promptBackdrop = document.getElementById('promptBackdrop');
 const promptTitle = document.getElementById('promptTitle');
 const promptLabel = document.getElementById('promptLabel');
@@ -940,6 +937,86 @@ function applyDetailAccent(colorClass) {
   card.style.borderTopColor = accent;
 }
 
+function parseColorToRgb(color) {
+  if (!color || typeof color !== 'string') return null;
+  const trimmed = color.trim();
+  if (trimmed.startsWith('#')) {
+    let hex = trimmed.slice(1);
+    if (hex.length === 3) hex = hex.split('').map((ch) => ch + ch).join('');
+    if (hex.length !== 6) return null;
+    const value = Number.parseInt(hex, 16);
+    if (Number.isNaN(value)) return null;
+    return {
+      r: (value >> 16) & 255,
+      g: (value >> 8) & 255,
+      b: value & 255,
+    };
+  }
+  const match = trimmed.match(/^rgb\s*\(([^)]+)\)/i);
+  if (!match) return null;
+  const parts = match[1].split(',').map((part) => Number.parseFloat(part.trim()));
+  if (parts.length < 3 || parts.some((v) => !Number.isFinite(v))) return null;
+  return { r: parts[0], g: parts[1], b: parts[2] };
+}
+
+function getRelativeLuminance(rgb) {
+  const toLinear = (v) => {
+    const c = v / 255;
+    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  };
+  const r = toLinear(rgb.r);
+  const g = toLinear(rgb.g);
+  const b = toLinear(rgb.b);
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+function resolveHeaderTextColors(accent) {
+  const rgb = parseColorToRgb(accent);
+  if (!rgb) {
+    return {
+      text: 'rgba(255,255,255,1)',
+      border: 'rgba(255,255,255,0.08)',
+      shadow: 'rgba(255,255,255,0.08)',
+    };
+  }
+  const isLight = getRelativeLuminance(rgb) > 0.6;
+  return {
+    text: isLight ? 'rgba(35,35,35,0.92)' : 'rgba(255,255,255,0.98)',
+    border: isLight ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.12)',
+    shadow: isLight ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.08)',
+  };
+}
+
+function applyHeaderColor(colorClass, options = {}) {
+  const resolved = COLOR_ACCENTS[colorClass] ? colorClass : 'c-navy';
+  const accent = COLOR_ACCENTS[resolved] || COLOR_ACCENTS['c-navy'];
+  const colors = resolveHeaderTextColors(accent);
+  const root = document.documentElement;
+  headerColor = resolved;
+  root.style.setProperty('--day-header-bg', accent);
+  root.style.setProperty('--day-header-text', colors.text);
+  root.style.setProperty('--day-header-border', colors.border);
+  root.style.setProperty('--day-header-shadow', colors.shadow);
+  setSwatchSelection(headerSwatches, headerColor);
+  if (options.persist === false) return;
+  try {
+    localStorage.setItem(HEADER_COLOR_KEY, headerColor);
+  } catch {
+    // ignore storage failures
+  }
+}
+
+function loadHeaderColor() {
+  let stored = null;
+  try {
+    stored = localStorage.getItem(HEADER_COLOR_KEY);
+  } catch {
+    stored = null;
+  }
+  if (stored && COLOR_ACCENTS[stored]) headerColor = stored;
+  applyHeaderColor(headerColor, { persist: false });
+}
+
 function applyPalette(paletteKey) {
   const palette = PALETTES[paletteKey];
   if (!palette) return;
@@ -953,6 +1030,7 @@ function applyPalette(paletteKey) {
   }
   selectedColor = palette.colors[0];
   setSwatchSelection(swatches, selectedColor);
+  applyHeaderColor(selectedColor);
 }
 
 async function exportTimetableImage() {
@@ -1671,6 +1749,10 @@ function pickColor(el) {
   setSwatchSelection(swatches, selectedColor);
 }
 
+function pickHeaderColor(el) {
+  applyHeaderColor(el.dataset.color);
+}
+
 function pickDetailColor(el) {
   detailSelectedColor = el.dataset.color;
   setSwatchSelection(detailSwatches, detailSelectedColor);
@@ -1685,6 +1767,7 @@ if (loginBtn) loginBtn.addEventListener('click', handleLogin);
 if (registerBtn) registerBtn.addEventListener('click', handleRegister);
 if (logoutBtn) logoutBtn.addEventListener('click', handleLogout);
 if (saveImageBtn) saveImageBtn.addEventListener('click', exportTimetableImage);
+if (fabSave) fabSave.addEventListener('click', exportTimetableImage);
 
 if (authPwInput) {
   authPwInput.addEventListener('keydown', (e) => {
@@ -1959,6 +2042,7 @@ document.addEventListener('keydown', (e) => {
 });
 
 // ── Init ─────────────────────────────────────────────
+loadHeaderColor();
 initApp();
 scheduleFitTimetableForMobile();
 requestAnimationFrame(() => scheduleFitTimetableForMobile());
