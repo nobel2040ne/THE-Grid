@@ -1,9 +1,20 @@
 // ── Config ──────────────────────────────────────────
-const START_H = 9, END_H = 21;
-const HOURS   = END_H - START_H;          // 12
+const DEFAULT_START_H = 9;
+const DEFAULT_END_H = 21;
+const VIEW_MIN_H = 6;
+const VIEW_MAX_H = 23;
 const ROW_H   = 54;                       // px per hour (must match CSS --row-h)
 const TIME_STEP = 15;                     // minutes for custom time selectors
-const DAY_LABELS = { 1: 'Mon', 2: 'Tue', 3: 'Wed', 4: 'Thu', 5: 'Fri' };
+const DAY_LABELS = { 1: 'Mon', 2: 'Tue', 3: 'Wed', 4: 'Thu', 5: 'Fri', 6: 'Sat', 7: 'Sun' };
+const DAY_NAMES = {
+  1: 'Monday',
+  2: 'Tuesday',
+  3: 'Wednesday',
+  4: 'Thursday',
+  5: 'Friday',
+  6: 'Saturday',
+  7: 'Sunday',
+};
 const PALETTES = {
   snu: {
     label: 'SNU',
@@ -91,21 +102,36 @@ const COLOR_ACCENTS = {
   'c-smoke': '#8D857D',
 };
 
-// ── Storage / Auth ───────────────────────────────────
-const USERS_KEY = 'tt_users_v1';
-const SESSION_KEY = 'tt_session_v1';
+// ── Storage ──────────────────────────────────────────
+const LOCAL_USER = 'local';
 const DATA_KEY_PREFIX = 'tt_data_v1_';
+const LEGACY_SESSION_KEY = 'tt_session_v1';
 const CARD_INFO_KEY = 'tt_card_info_v1';
 const HEADER_COLOR_KEY = 'tt_header_color_v1';
+const VIEW_SETTINGS_KEY = 'tt_view_settings_v1';
+const THEME_KEY = 'tt_theme_v1';
+const CUSTOM_COLOR_PREFIX = 'custom:';
+const EXPORT_APP_ID = 'weekly-rhythm';
+const EXPORT_VERSION = 1;
 const CARD_INFO_ORDER = ['prof', 'room', 'credit'];
 const CARD_INFO_DEFAULT = ['prof', 'room'];
 const SEMESTERS = ['1-1','1-2','2-1','2-2','3-1','3-2','4-1','4-2'];
+const SEMESTER_LABELS = {
+  '1-1': 'Plan A',
+  '1-2': 'Plan B',
+  '2-1': 'Plan C',
+  '2-2': 'Plan D',
+  '3-1': 'Plan E',
+  '3-2': 'Plan F',
+  '4-1': 'Plan G',
+  '4-2': 'Plan H',
+};
 
 const SAMPLE_TABLES = [
   {
-    name: 'Sample A',
+    name: 'Weekly Plan',
     courses: [
-      { name:'강의명', prof:'교수님', room:'강의실', day:1, start:'09:00', end:'10:30', credit:1, color:'c-flex-red' },
+      { name:'Morning Focus', prof:'Deep work block', room:'Desk', day:1, start:'09:00', end:'10:30', credit:3, color:'c-flex-red' },
     ],
   },
 ];
@@ -129,7 +155,7 @@ function createDefaultUserData() {
   SEMESTERS.forEach((sem) => {
     const tables = SAMPLE_TABLES.map((t, idx) => ({
       id: `tt-${sem}-${idx + 1}`,
-      name: `${t.name} (${sem})`,
+      name: `${t.name} (${SEMESTER_LABELS[sem] || sem})`,
       courses: cloneCourses(t.courses),
     }));
     semesters[sem] = { timetables: tables, activeId: tables[0].id };
@@ -140,11 +166,6 @@ function createDefaultUserData() {
 function safeParse(raw, fallback) {
   try { return JSON.parse(raw) ?? fallback; } catch { return fallback; }
 }
-function getUsers() { return safeParse(localStorage.getItem(USERS_KEY), {}); }
-function setUsers(obj) { localStorage.setItem(USERS_KEY, JSON.stringify(obj)); }
-function getSessionUser() { return localStorage.getItem(SESSION_KEY); }
-function setSessionUser(id) { localStorage.setItem(SESSION_KEY, id); }
-function clearSessionUser() { localStorage.removeItem(SESSION_KEY); }
 function getUserData(userId) {
   return safeParse(localStorage.getItem(DATA_KEY_PREFIX + userId), null);
 }
@@ -166,17 +187,22 @@ function getNextId(list) {
   return maxId + 1;
 }
 
-async function hashPassword(pw) {
-  if (window.crypto && window.crypto.subtle) {
-    const buf = await window.crypto.subtle.digest('SHA-256', new TextEncoder().encode(pw));
-    return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+// One-time migration: adopt data from the pre-login-removal per-user storage.
+// Prefer the last logged-in user's blob, else the first tt_data_v1_* key found.
+function migrateLegacyData() {
+  if (getUserData(LOCAL_USER)) return;
+  const legacyUser = localStorage.getItem(LEGACY_SESSION_KEY);
+  let source = legacyUser && legacyUser !== LOCAL_USER ? getUserData(legacyUser) : null;
+  if (!source) {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith(DATA_KEY_PREFIX) && key !== DATA_KEY_PREFIX + LOCAL_USER) {
+        source = safeParse(localStorage.getItem(key), null);
+        if (source) break;
+      }
+    }
   }
-  let hash = 0;
-  for (let i = 0; i < pw.length; i++) {
-    hash = (hash << 5) - hash + pw.charCodeAt(i);
-    hash |= 0;
-  }
-  return String(hash);
+  if (source) saveUserData(LOCAL_USER, source);
 }
 
 // ── State ───────────────────────────────────────────
@@ -189,32 +215,54 @@ let cardInfoSelection = CARD_INFO_DEFAULT.slice();
 let draftSlots = [];
 let detailSlots = [];
 let activeId = null;
-let currentUserId = null;
+let draftSlotEditIndex = null;
+let livePreviewRaf = 0;
+let livePreviewSuspended = false;
+let routinePreviewCourse = null;
+let routineDeleteShortcutArmed = false;
+let currentUserId = LOCAL_USER;
 let currentSemester = null;
 let currentTableId = null;
+let viewStartMins = DEFAULT_START_H * 60;
+let viewEndMins = DEFAULT_END_H * 60;
+let visibleDays = [1, 2, 3, 4, 5];
+let currentTheme = 'light';
+let customPickerHue = 210;
+let customPickerSat = 0.72;
+let customPickerVal = 0.65;
+let customColorDragPointerId = null;
 
-const currentUserEl = document.getElementById('currentUser');
-const panelUserEl = document.getElementById('panelUser');
 const semesterSelect = document.getElementById('semesterSelect');
 const timetableSelect = document.getElementById('timetableSelect');
 const newTableBtn = document.getElementById('newTable');
 const copyTableBtn = document.getElementById('copyTable');
 const renameTableBtn = document.getElementById('renameTable');
-const logoutBtn = document.getElementById('logoutBtn');
-const authBackdrop = document.getElementById('authBackdrop');
-const authIdInput = document.getElementById('authId');
-const authPwInput = document.getElementById('authPw');
-const authStatus = document.getElementById('authStatus');
-const loginBtn = document.getElementById('loginBtn');
-const registerBtn = document.getElementById('registerBtn');
+const deleteTableBtn = document.getElementById('deleteTable');
+const panelTitle = document.getElementById('panelTitle');
+const routineSubmitBtn = document.getElementById('routineSubmitBtn');
+const deleteRoutineBtn = document.getElementById('deleteRoutineBtn');
 const swatches = document.getElementById('swatches');
+const customColorSwatch = document.getElementById('customColorSwatch');
+const customColorPopover = document.getElementById('customColorPopover');
+const customColorField = document.getElementById('customColorField');
+const customHueSlider = document.getElementById('customHueSlider');
+const customHexInput = document.getElementById('customHexInput');
+const customColorPreview = document.getElementById('customColorPreview');
 const headerSwatches = document.getElementById('headerSwatches');
 const toggleProf = document.getElementById('toggleProf');
 const toggleRoom = document.getElementById('toggleRoom');
 const toggleCredit = document.getElementById('toggleCredit');
-const toggleHelp = document.getElementById('toggleHelp');
 const saveImageBtn = document.getElementById('saveImage');
 const fabSave = document.getElementById('fabSave');
+const exportDataBtn = document.getElementById('exportDataBtn');
+const importDataBtn = document.getElementById('importDataBtn');
+const importDataInput = document.getElementById('importDataInput');
+const controlsToggle = document.getElementById('controlsToggle');
+const controlsPopover = document.getElementById('controlsPopover');
+const appearanceToggle = document.getElementById('appearanceToggle');
+const appearancePopover = document.getElementById('appearancePopover');
+const themeToggle = document.getElementById('themeToggle');
+const fabDuo = document.querySelector('.fab-duo');
 const promptBackdrop = document.getElementById('promptBackdrop');
 const promptTitle = document.getElementById('promptTitle');
 const promptLabel = document.getElementById('promptLabel');
@@ -223,13 +271,19 @@ const promptCancel = document.getElementById('promptCancel');
 const promptOk = document.getElementById('promptOk');
 const promptStatus = document.getElementById('promptStatus');
 const paletteSelect = document.getElementById('paletteSelect');
+const viewStartInput = document.getElementById('viewStart');
+const viewEndInput = document.getElementById('viewEnd');
+const viewDayToggles = document.getElementById('viewDayToggles');
+const nameInput = document.getElementById('f-name');
+const profInput = document.getElementById('f-prof');
+const roomInput = document.getElementById('f-room');
+const creditInput = document.getElementById('f-credit');
 const daySelect = document.getElementById('f-day');
 const startInput = document.getElementById('f-start');
 const endInput = document.getElementById('f-end');
 const slotListEl = document.getElementById('slotList');
 const slotItemsEl = document.getElementById('slotItems');
 const addSlotBtn = document.getElementById('addSlotBtn');
-const clearSlotsBtn = document.getElementById('clearSlotsBtn');
 const detailStartInput = document.getElementById('d-start');
 const detailEndInput = document.getElementById('d-end');
 const detailNameInput = document.getElementById('d-name');
@@ -241,7 +295,6 @@ const detailSwatches = document.getElementById('detailSwatches');
 const detailSlotList = document.getElementById('detailSlotList');
 const detailSlotItems = document.getElementById('detailSlotItems');
 const detailAddSlotBtn = document.getElementById('detailAddSlot');
-const detailClearSlotsBtn = document.getElementById('detailClearSlots');
 const timetableEl = document.getElementById('timetable');
 
 // ── Custom Selects ──────────────────────────────────
@@ -254,9 +307,9 @@ function closeAllCustomPickers(except) {
   });
 }
 
-function buildTimeOptions() {
+function buildTimeOptions(startMins = VIEW_MIN_H * 60, endMins = VIEW_MAX_H * 60, step = TIME_STEP) {
   const times = [];
-  for (let mins = START_H * 60; mins <= END_H * 60; mins += TIME_STEP) {
+  for (let mins = startMins; mins <= endMins; mins += step) {
     const hh = String(Math.floor(mins / 60)).padStart(2, '0');
     const mm = String(mins % 60).padStart(2, '0');
     times.push(`${hh}:${mm}`);
@@ -265,6 +318,7 @@ function buildTimeOptions() {
 }
 
 const TIME_OPTIONS = buildTimeOptions();
+const VIEW_TIME_OPTIONS = buildTimeOptions(VIEW_MIN_H * 60, VIEW_MAX_H * 60, 60);
 
 function makeOptionButton({ value, label, selected, disabled }) {
   const btn = document.createElement('button');
@@ -592,11 +646,13 @@ document.addEventListener('click', (e) => {
   if (!e.target.closest('.custom-select')) closeAllCustomPickers();
 });
 
-initCustomSelect(semesterSelect, { placeholder: 'Select semester' });
-initCustomSelect(timetableSelect, { placeholder: 'Select timetable' });
+initCustomSelect(semesterSelect, { placeholder: 'Select collection' });
+initCustomSelect(timetableSelect, { placeholder: 'Select schedule' });
 initCustomSelect(paletteSelect, { placeholder: 'Select palette' });
 initCustomSelect(daySelect, { placeholder: 'Select day' });
 initCustomSelect(detailDaySelect, { placeholder: 'Select day' });
+initCustomTime(viewStartInput, { placeholder: 'Start', options: VIEW_TIME_OPTIONS });
+initCustomTime(viewEndInput, { placeholder: 'End', options: VIEW_TIME_OPTIONS });
 initCustomTime(startInput, { placeholder: '--:--' });
 initCustomTime(endInput, { placeholder: '--:--' });
 initCustomTime(detailStartInput, { placeholder: '--:--' });
@@ -609,6 +665,7 @@ function openPrompt(options = {}) {
   return new Promise((resolve) => {
     promptResolver = resolve;
     promptRequired = Boolean(options.required);
+    const isConfirm = Boolean(options.confirm);
     if (promptTitle) promptTitle.textContent = options.title || 'Input';
     if (promptLabel) promptLabel.textContent = options.label || 'Name';
     if (promptInput) {
@@ -617,19 +674,33 @@ function openPrompt(options = {}) {
     }
     if (promptOk) promptOk.textContent = options.okText || 'OK';
     if (promptCancel) promptCancel.textContent = options.cancelText || 'Cancel';
-    if (promptStatus) promptStatus.textContent = '';
+    if (promptStatus) promptStatus.textContent = options.message || '';
     if (promptBackdrop) {
+      promptBackdrop.classList.toggle('confirm-mode', isConfirm);
       promptBackdrop.classList.add('open');
       promptBackdrop.setAttribute('aria-hidden', 'false');
     }
     closeAllCustomPickers();
     setTimeout(() => {
-      if (promptInput) {
+      if (isConfirm) {
+        if (promptOk) promptOk.focus();
+      } else if (promptInput) {
         promptInput.focus();
         promptInput.select();
       }
     }, 0);
   });
+}
+
+// Yes/no confirmation reusing the prompt modal (input hidden via .confirm-mode).
+function openConfirm(options = {}) {
+  return openPrompt({
+    confirm: true,
+    title: options.title || 'Confirm',
+    message: options.message || 'Are you sure?',
+    okText: options.okText || 'Delete',
+    cancelText: options.cancelText || 'Cancel',
+  }).then((value) => value !== null);
 }
 
 function closePrompt(value) {
@@ -646,7 +717,8 @@ function closePrompt(value) {
 function submitPrompt() {
   const value = promptInput ? promptInput.value : '';
   if (promptRequired && !value.trim()) {
-    if (promptStatus) promptStatus.textContent = 'Please enter your name.';
+    const label = promptLabel ? promptLabel.textContent.toLowerCase() : 'value';
+    if (promptStatus) promptStatus.textContent = `Please enter a ${label}.`;
     if (promptInput) promptInput.focus();
     return;
   }
@@ -676,7 +748,7 @@ if (promptInput) {
 function normalizeCardInfoSelection(list) {
   const result = [];
   CARD_INFO_ORDER.forEach((key) => {
-    if (list.includes(key) && result.length < 2) result.push(key);
+    if (list.includes(key)) result.push(key);
   });
   return result;
 }
@@ -706,12 +778,6 @@ function getSelectedInfoKeys() {
 function updateCardInfoToggles() {
   const selected = normalizeCardInfoSelection(getSelectedInfoKeys());
   cardInfoSelection = selected;
-  const maxed = selected.length >= 2;
-  [toggleProf, toggleRoom, toggleCredit].forEach((el) => {
-    if (!el) return;
-    el.disabled = !el.checked && maxed;
-  });
-  if (toggleHelp) toggleHelp.textContent = `Selected ${selected.length}/2`;
   persistCardInfoSelection();
 }
 
@@ -720,6 +786,39 @@ function applyCardInfoSelectionToToggles() {
   if (toggleRoom) toggleRoom.checked = cardInfoSelection.includes('room');
   if (toggleCredit) toggleCredit.checked = cardInfoSelection.includes('credit');
   updateCardInfoToggles();
+}
+
+function normalizeTheme(theme) {
+  return theme === 'dark' ? 'dark' : 'light';
+}
+
+function applyTheme(theme, options = {}) {
+  currentTheme = normalizeTheme(theme);
+  document.documentElement.dataset.theme = currentTheme;
+  if (document.body) document.body.classList.toggle('theme-dark', currentTheme === 'dark');
+  if (themeToggle) themeToggle.checked = currentTheme === 'dark';
+  if (options.persist !== false) {
+    try {
+      localStorage.setItem(THEME_KEY, currentTheme);
+    } catch {
+      // ignore storage failures
+    }
+  }
+  if (options.refresh !== false) {
+    buildGrid();
+    if (detailSelectedColor) applyDetailAccent(detailSelectedColor);
+    scheduleFitTimetableForMobile();
+  }
+}
+
+function loadTheme() {
+  let stored = null;
+  try {
+    stored = localStorage.getItem(THEME_KEY);
+  } catch {
+    stored = null;
+  }
+  applyTheme(stored, { persist: false, refresh: false });
 }
 
 function getSelectedDays() {
@@ -762,28 +861,54 @@ function renderSlotList(list, itemsContainer, emptyText) {
         <span class="slot-day">${DAY_LABELS[slot.day] || ''}</span>
         <span class="slot-time">${slot.start}–${slot.end}</span>
       </div>
-      <button class="slot-remove" type="button" aria-label="Remove">REMOVE</button>
+      <button class="slot-remove" type="button" aria-label="Remove time block"><span aria-hidden="true">×</span></button>
     `;
     itemsContainer.appendChild(item);
   });
 }
 
-function setDraftSlots(slots) {
-  draftSlots = normalizeSlots(slots);
-  renderSlotList(draftSlots, slotItemsEl);
-  renderDraftOverlays();
+function sameSlot(a, b) {
+  return Boolean(a && b && a.day === b.day && a.start === b.start && a.end === b.end);
 }
 
-function addDraftSlots(slots) {
-  draftSlots = normalizeSlots([...draftSlots, ...slots]);
-  renderSlotList(draftSlots, slotItemsEl);
+function normalizeDraftSlotEditIndex(options = {}) {
+  if (options.editSlot) {
+    const idx = draftSlots.findIndex((slot) => sameSlot(slot, options.editSlot));
+    draftSlotEditIndex = idx >= 0 ? idx : null;
+    return;
+  }
+  if (Number.isFinite(options.editIndex)) {
+    draftSlotEditIndex = draftSlots.length
+      ? Math.max(0, Math.min(options.editIndex, draftSlots.length - 1))
+      : null;
+    return;
+  }
+  if (!draftSlots.length) {
+    draftSlotEditIndex = null;
+  } else if (!Number.isFinite(draftSlotEditIndex) || draftSlotEditIndex >= draftSlots.length) {
+    draftSlotEditIndex = 0;
+  }
+}
+
+function setDraftSlots(slots, options = {}) {
+  draftSlots = normalizeSlots(slots);
+  normalizeDraftSlotEditIndex(options);
+  renderSlotList(draftSlots, slotItemsEl, 'No times added');
   renderDraftOverlays();
+  if (options.livePreview !== false) requestRoutineLivePreview();
+}
+
+function addDraftSlots(slots, options = {}) {
+  const nextSlots = normalizeSlots(slots);
+  const preferred = nextSlots[nextSlots.length - 1] || null;
+  setDraftSlots([...draftSlots, ...nextSlots], {
+    ...options,
+    editSlot: options.editSlot || preferred,
+  });
 }
 
 function clearDraftSlots() {
-  draftSlots = [];
-  renderSlotList(draftSlots, slotItemsEl);
-  renderDraftOverlays();
+  setDraftSlots([]);
 }
 
 function setDetailSlots(slots) {
@@ -801,21 +926,24 @@ function clearDetailSlots() {
   renderSlotList(detailSlots, detailSlotItems);
 }
 
-function buildSlotsFromAddInputs() {
+function buildSlotsFromAddInputs(options = {}) {
+  const shouldFocus = options.focus !== false;
   const days = getSelectedDays();
   const start = startInput ? startInput.value : '';
   const end = endInput ? endInput.value : '';
   if (!days.length) {
-    if (daySelect) daySelect.focus();
+    if (shouldFocus && daySelect) daySelect.focus();
     return null;
   }
   if (!start || !end) {
-    if (!start && startInput) startInput.focus();
-    else if (endInput) endInput.focus();
+    if (shouldFocus) {
+      if (!start && startInput) startInput.focus();
+      else if (endInput) endInput.focus();
+    }
     return null;
   }
   if (timeToMins(end) <= timeToMins(start)) {
-    if (endInput) endInput.focus();
+    if (shouldFocus && endInput) endInput.focus();
     return null;
   }
   return days.map((day) => ({ day, start, end }));
@@ -851,16 +979,47 @@ if (toggleCredit) toggleCredit.addEventListener('change', () => { updateCardInfo
 setDraftSlots([]);
 setDetailSlots([]);
 
+function setAddSlotInputsFromSlot(slot) {
+  if (!slot) return;
+  setSelectedDays([slot.day]);
+  if (startInput) {
+    startInput.value = slot.start;
+    syncCustomPicker(startInput);
+  }
+  if (endInput) {
+    endInput.value = slot.end;
+    syncCustomPicker(endInput);
+  }
+}
+
 if (slotItemsEl) {
   slotItemsEl.addEventListener('click', (e) => {
     const removeBtn = e.target.closest('.slot-remove');
-    if (!removeBtn) return;
-    const item = removeBtn.closest('.slot-item');
+    const item = e.target.closest('.slot-item');
     if (!item) return;
     const idx = parseInt(item.dataset.index, 10);
     if (!Number.isFinite(idx)) return;
-    const next = draftSlots.filter((_, i) => i !== idx);
-    setDraftSlots(next);
+    if (removeBtn) {
+      const next = draftSlots.filter((_, i) => i !== idx);
+      const nextIndex = idx >= next.length ? next.length - 1 : idx;
+      setDraftSlots(next, { editIndex: nextIndex });
+      if (draftSlotEditIndex != null && draftSlots[draftSlotEditIndex]) {
+        setAddSlotInputsFromSlot(draftSlots[draftSlotEditIndex]);
+      } else {
+        clearSelectedDays();
+        if (startInput) {
+          startInput.value = '';
+          syncCustomPicker(startInput);
+        }
+        if (endInput) {
+          endInput.value = '';
+          syncCustomPicker(endInput);
+        }
+      }
+      return;
+    }
+    draftSlotEditIndex = idx;
+    setAddSlotInputsFromSlot(draftSlots[idx]);
   });
 }
 if (addSlotBtn) {
@@ -870,17 +1029,6 @@ if (addSlotBtn) {
     addDraftSlots(slots);
   });
 }
-if (clearSlotsBtn) {
-  clearSlotsBtn.addEventListener('click', () => {
-    clearDraftSlots();
-    clearSelectedDays();
-    if (startInput) startInput.value = '';
-    if (endInput) endInput.value = '';
-    syncCustomPicker(startInput);
-    syncCustomPicker(endInput);
-  });
-}
-
 if (detailSlotItems) {
   detailSlotItems.addEventListener('click', (e) => {
     const removeBtn = e.target.closest('.slot-remove');
@@ -916,25 +1064,212 @@ if (detailAddSlotBtn) {
     addDetailSlots([slot]);
   });
 }
-if (detailClearSlotsBtn) {
-  detailClearSlotsBtn.addEventListener('click', () => {
-    clearDetailSlots();
-  });
-}
-
 function setSwatchSelection(container, colorClass) {
   if (!container) return;
   container.querySelectorAll('.swatch').forEach((swatch) => {
     swatch.classList.toggle('selected', swatch.dataset.color === colorClass);
   });
+  if (container === swatches) syncCustomColorControl(colorClass);
 }
 
 function applyDetailAccent(colorClass) {
   const card = document.getElementById('detailCard');
   if (!card) return;
-  const accent = COLOR_ACCENTS[colorClass] || COLOR_ACCENTS['c-navy'];
+  const accent = getColorAccent(colorClass);
   card.style.setProperty('--card-accent', accent);
   card.style.borderTopColor = accent;
+}
+
+function normalizeHexColor(value) {
+  if (!value || typeof value !== 'string') return null;
+  let hex = value.trim().toLowerCase();
+  if (hex.startsWith(CUSTOM_COLOR_PREFIX)) hex = hex.slice(CUSTOM_COLOR_PREFIX.length);
+  if (!hex.startsWith('#')) hex = `#${hex}`;
+  if (/^#[0-9a-f]{3}$/i.test(hex)) {
+    hex = `#${hex.slice(1).split('').map((ch) => ch + ch).join('')}`;
+  }
+  return /^#[0-9a-f]{6}$/i.test(hex) ? hex : null;
+}
+
+function makeCustomColorValue(value) {
+  const hex = normalizeHexColor(value);
+  return hex ? `${CUSTOM_COLOR_PREFIX}${hex}` : null;
+}
+
+function getCustomColorHex(color) {
+  if (typeof color !== 'string' || !color.startsWith(CUSTOM_COLOR_PREFIX)) return null;
+  return normalizeHexColor(color);
+}
+
+function isCustomColor(color) {
+  return Boolean(getCustomColorHex(color));
+}
+
+function getColorAccent(color) {
+  return getCustomColorHex(color) || COLOR_ACCENTS[color] || COLOR_ACCENTS['c-navy'];
+}
+
+function colorToRgba(color, alpha) {
+  const rgb = parseColorToRgb(color);
+  if (!rgb) return `rgba(15,15,112,${alpha})`;
+  return `rgba(${Math.round(rgb.r)},${Math.round(rgb.g)},${Math.round(rgb.b)},${alpha})`;
+}
+
+function mixRgb(rgb, target, amount) {
+  const t = target || { r: 255, g: 255, b: 255 };
+  return {
+    r: rgb.r + (t.r - rgb.r) * amount,
+    g: rgb.g + (t.g - rgb.g) * amount,
+    b: rgb.b + (t.b - rgb.b) * amount,
+  };
+}
+
+function rgbToCss(rgb) {
+  return `rgb(${Math.round(rgb.r)},${Math.round(rgb.g)},${Math.round(rgb.b)})`;
+}
+
+function rgbToRgbaCss(rgb, alpha) {
+  return `rgba(${Math.round(rgb.r)},${Math.round(rgb.g)},${Math.round(rgb.b)},${alpha})`;
+}
+
+function getCustomCardVars(color) {
+  const accent = getCustomColorHex(color);
+  if (!accent) return null;
+  const rgb = parseColorToRgb(accent);
+  if (currentTheme === 'dark') {
+    const lum = rgb ? getRelativeLuminance(rgb) : 0.5;
+    const visibleAccentRgb = rgb && lum < 0.22 ? mixRgb(rgb, { r: 255, g: 255, b: 255 }, 0.42) : rgb;
+    const visibleAccent = visibleAccentRgb ? rgbToCss(visibleAccentRgb) : accent;
+    const textRgb = visibleAccentRgb
+      ? mixRgb(visibleAccentRgb, { r: 255, g: 255, b: 255 }, lum > 0.68 ? 0.12 : 0.56)
+      : { r: 230, g: 230, b: 230 };
+    return {
+      accent: visibleAccent,
+      bg: colorToRgba(visibleAccent, 0.22),
+      border: colorToRgba(visibleAccent, 0.44),
+      text: rgbToCss(textRgb),
+      sub: rgbToRgbaCss(textRgb, 0.72),
+    };
+  }
+  const isLight = rgb ? getRelativeLuminance(rgb) > 0.68 : false;
+  const text = isLight ? '#4a4a4a' : accent;
+  const sub = isLight ? 'rgba(74,74,74,0.62)' : colorToRgba(accent, 0.62);
+  return {
+    accent,
+    bg: colorToRgba(accent, isLight ? 0.24 : 0.12),
+    border: colorToRgba(accent, isLight ? 0.42 : 0.26),
+    text,
+    sub,
+  };
+}
+
+function applyCourseColorVars(el, color) {
+  const vars = getCustomCardVars(color);
+  if (!vars || !el) return;
+  el.style.setProperty('--card-bg', vars.bg);
+  el.style.setProperty('--card-accent', vars.accent);
+  el.style.setProperty('--card-border', vars.border);
+  el.style.setProperty('--card-text', vars.text);
+  el.style.setProperty('--card-sub', vars.sub);
+}
+
+function clampUnit(value) {
+  return Math.max(0, Math.min(1, value));
+}
+
+function rgbToHsv(rgb) {
+  if (!rgb) return { h: 210, s: 0.72, v: 0.65 };
+  const r = rgb.r / 255;
+  const g = rgb.g / 255;
+  const b = rgb.b / 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const delta = max - min;
+  let h = 0;
+  if (delta) {
+    if (max === r) h = 60 * (((g - b) / delta) % 6);
+    else if (max === g) h = 60 * ((b - r) / delta + 2);
+    else h = 60 * ((r - g) / delta + 4);
+  }
+  if (h < 0) h += 360;
+  return {
+    h: Math.round(h),
+    s: max === 0 ? 0 : delta / max,
+    v: max,
+  };
+}
+
+function hsvToRgb(h, s, v) {
+  const hue = ((h % 360) + 360) % 360;
+  const sat = clampUnit(s);
+  const val = clampUnit(v);
+  const c = val * sat;
+  const x = c * (1 - Math.abs((hue / 60) % 2 - 1));
+  const m = val - c;
+  let r = 0, g = 0, b = 0;
+  if (hue < 60) [r, g, b] = [c, x, 0];
+  else if (hue < 120) [r, g, b] = [x, c, 0];
+  else if (hue < 180) [r, g, b] = [0, c, x];
+  else if (hue < 240) [r, g, b] = [0, x, c];
+  else if (hue < 300) [r, g, b] = [x, 0, c];
+  else [r, g, b] = [c, 0, x];
+  return {
+    r: Math.round((r + m) * 255),
+    g: Math.round((g + m) * 255),
+    b: Math.round((b + m) * 255),
+  };
+}
+
+function rgbToHex(rgb) {
+  if (!rgb) return '#205ea6';
+  return `#${[rgb.r, rgb.g, rgb.b]
+    .map((value) => Math.round(Math.max(0, Math.min(255, value))).toString(16).padStart(2, '0'))
+    .join('')}`;
+}
+
+function hsvToHex(h, s, v) {
+  return rgbToHex(hsvToRgb(h, s, v));
+}
+
+function setCustomPickerFromHex(value) {
+  const hex = normalizeHexColor(value) || '#205ea6';
+  const hsv = rgbToHsv(parseColorToRgb(hex));
+  customPickerHue = hsv.h;
+  customPickerSat = hsv.s;
+  customPickerVal = hsv.v;
+  syncCustomPickerUi(hex);
+}
+
+function getCustomPickerHex() {
+  return hsvToHex(customPickerHue, customPickerSat, customPickerVal);
+}
+
+function syncCustomPickerUi(hex = getCustomPickerHex()) {
+  if (!customColorSwatch) return;
+  const hueColor = hsvToHex(customPickerHue, 1, 1);
+  customColorSwatch.style.setProperty('--custom-color', hex);
+  if (customColorField) {
+    customColorField.style.setProperty('--custom-hue-color', hueColor);
+    customColorField.style.setProperty('--custom-sat-pos', `${(customPickerSat * 100).toFixed(2)}%`);
+    customColorField.style.setProperty('--custom-val-pos', `${((1 - customPickerVal) * 100).toFixed(2)}%`);
+    customColorField.setAttribute('aria-valuenow', String(Math.round(customPickerVal * 100)));
+  }
+  if (customHueSlider) customHueSlider.value = String(customPickerHue);
+  if (customHexInput && document.activeElement !== customHexInput) customHexInput.value = hex.toUpperCase();
+  if (customColorPreview) customColorPreview.style.setProperty('--custom-color', hex);
+}
+
+function syncCustomColorControl(color) {
+  if (!customColorSwatch) return;
+  const hex = getCustomColorHex(color);
+  if (hex) {
+    setCustomPickerFromHex(hex);
+    customColorSwatch.classList.add('selected');
+  } else {
+    const accent = normalizeHexColor(COLOR_ACCENTS[color]) || getCustomPickerHex();
+    setCustomPickerFromHex(accent);
+    customColorSwatch.classList.remove('selected');
+  }
 }
 
 function parseColorToRgb(color) {
@@ -1046,7 +1381,7 @@ async function exportTimetableImage() {
         scrollY: -window.scrollY,
       });
       const link = document.createElement('a');
-      link.download = `timetable-${Date.now()}.png`;
+      link.download = `weekly-schedule-${Date.now()}.png`;
       link.href = canvas.toDataURL('image/png');
       link.click();
       return;
@@ -1093,7 +1428,7 @@ async function exportTimetableImage() {
       ctx.scale(scale, scale);
       ctx.drawImage(img, 0, 0);
       const link = document.createElement('a');
-      link.download = `timetable-${Date.now()}.png`;
+      link.download = `weekly-schedule-${Date.now()}.png`;
       link.href = canvas.toDataURL('image/png');
       link.click();
     }
@@ -1105,9 +1440,217 @@ async function exportTimetableImage() {
   img.src = url;
 }
 
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+function getStoredJson(key, fallback = null) {
+  try {
+    return safeParse(localStorage.getItem(key), fallback);
+  } catch {
+    return fallback;
+  }
+}
+
+function buildDataExportPayload() {
+  return {
+    app: EXPORT_APP_ID,
+    version: EXPORT_VERSION,
+    exportedAt: new Date().toISOString(),
+    userData: ensureUserData(currentUserId || LOCAL_USER),
+    preferences: {
+      viewSettings: getStoredJson(VIEW_SETTINGS_KEY, {
+        start: minsToTimeStr(viewStartMins),
+        end: minsToTimeStr(viewEndMins),
+        days: visibleDays,
+      }),
+      headerColor,
+      theme: currentTheme,
+      cardInfo: getStoredJson(CARD_INFO_KEY, cardInfoSelection),
+    },
+  };
+}
+
+function exportData() {
+  const payload = buildDataExportPayload();
+  const json = JSON.stringify(payload, null, 2);
+  const date = new Date().toISOString().slice(0, 10);
+  downloadBlob(new Blob([json], { type: 'application/json;charset=utf-8' }), `weekly-rhythm-data-${date}.json`);
+}
+
+function normalizeImportedCourse(course, fallbackId) {
+  if (!course || typeof course !== 'object') return null;
+  const rawSlots = Array.isArray(course.slots)
+    ? course.slots
+    : (course.day && course.start && course.end ? [{ day: course.day, start: course.start, end: course.end }] : []);
+  const slots = normalizeSlots(rawSlots);
+  if (!slots.length) return null;
+  const idNumber = Number(course.id);
+  const id = Number.isFinite(idNumber) && idNumber > 0 ? Math.floor(idNumber) : fallbackId;
+  const creditNumber = parseInt(course.credit, 10);
+  const color = isCustomColor(course.color) || COLOR_ACCENTS[course.color] ? course.color : 'c-navy';
+  const next = {
+    id,
+    name: typeof course.name === 'string' && course.name.trim() ? course.name.trim() : 'Untitled Routine',
+    prof: typeof course.prof === 'string' ? course.prof : '',
+    room: typeof course.room === 'string' ? course.room : '',
+    credit: Number.isFinite(creditNumber) ? Math.min(6, Math.max(1, creditNumber)) : 3,
+    color,
+    slots,
+  };
+  if (slots[0]) {
+    next.day = slots[0].day;
+    next.start = slots[0].start;
+    next.end = slots[0].end;
+  }
+  return next;
+}
+
+function normalizeImportedUserData(raw) {
+  if (!raw || typeof raw !== 'object' || !raw.semesters || typeof raw.semesters !== 'object') return null;
+  const data = createDefaultUserData();
+  SEMESTERS.forEach((sem) => {
+    const sourceSem = raw.semesters[sem];
+    if (!sourceSem || !Array.isArray(sourceSem.timetables)) return;
+    const timetables = sourceSem.timetables.map((table, tableIndex) => {
+      if (!table || typeof table !== 'object') return null;
+      const fallbackTableId = `tt-import-${sem}-${tableIndex + 1}`;
+      const tableId = typeof table.id === 'string' && table.id ? table.id : fallbackTableId;
+      const courses = Array.isArray(table.courses)
+        ? table.courses.map((course, courseIndex) => normalizeImportedCourse(course, courseIndex + 1)).filter(Boolean)
+        : [];
+      return {
+        id: tableId,
+        name: typeof table.name === 'string' && table.name.trim()
+          ? table.name.trim()
+          : `Imported Schedule ${tableIndex + 1}`,
+        courses,
+      };
+    }).filter(Boolean);
+    if (!timetables.length) return;
+    const activeId = typeof sourceSem.activeId === 'string'
+      && timetables.some((table) => table.id === sourceSem.activeId)
+      ? sourceSem.activeId
+      : timetables[0].id;
+    data.semesters[sem] = { timetables, activeId };
+  });
+  data.lastSemester = SEMESTERS.includes(raw.lastSemester) ? raw.lastSemester : SEMESTERS[0];
+  return data;
+}
+
+function normalizeImportedViewSettings(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const range = normalizeViewRange(timeToMins(raw.start || ''), timeToMins(raw.end || ''));
+  return {
+    start: minsToTimeStr(range.start),
+    end: minsToTimeStr(range.end),
+    days: normalizeVisibleDays(raw.days),
+  };
+}
+
+function applyImportedPreferences(payload) {
+  const preferences = payload && typeof payload.preferences === 'object' ? payload.preferences : {};
+  const viewSettings = normalizeImportedViewSettings(preferences.viewSettings || payload.viewSettings);
+  if (viewSettings) localStorage.setItem(VIEW_SETTINGS_KEY, JSON.stringify(viewSettings));
+
+  const nextHeaderColor = preferences.headerColor || payload.headerColor;
+  if (COLOR_ACCENTS[nextHeaderColor]) localStorage.setItem(HEADER_COLOR_KEY, nextHeaderColor);
+
+  const nextTheme = preferences.theme || payload.theme;
+  if (nextTheme === 'dark' || nextTheme === 'light') localStorage.setItem(THEME_KEY, nextTheme);
+
+  const cardInfoSource = Array.isArray(preferences.cardInfo)
+    ? preferences.cardInfo
+    : (Array.isArray(payload.cardInfo) ? payload.cardInfo : null);
+  if (cardInfoSource) {
+    localStorage.setItem(CARD_INFO_KEY, JSON.stringify(normalizeCardInfoSelection(cardInfoSource)));
+  }
+}
+
+function reloadImportedState(data) {
+  currentUserId = LOCAL_USER;
+  currentSemester = SEMESTERS.includes(data.lastSemester) ? data.lastSemester : SEMESTERS[0];
+  currentTableId = null;
+  activeId = null;
+  disarmRoutineDeleteShortcut();
+  clearRoutineEditState();
+  clearRoutineFields();
+  loadViewSettings();
+  loadTheme();
+  loadHeaderColor();
+  loadCardInfoSelection();
+  applyCardInfoSelectionToToggles();
+  populateSemesterSelect();
+  loadCurrentTimetable();
+  syncRoutineEditorMode();
+  closePanel();
+  if (controlsPopover && !controlsPopover.hidden) setControlsOpen(false);
+  if (appearancePopover && !appearancePopover.hidden) setAppearanceOpen(false);
+}
+
+async function importDataFile(file) {
+  if (!file) return;
+  let payload = null;
+  try {
+    payload = JSON.parse(await file.text());
+  } catch {
+    await openConfirm({
+      title: 'Import Failed',
+      message: 'This file is not valid JSON.',
+      okText: 'OK',
+      cancelText: 'Close',
+    });
+    return;
+  }
+
+  const sourceData = payload.userData || payload.data || (payload.semesters ? payload : null);
+  const importedData = normalizeImportedUserData(sourceData);
+  if (!importedData) {
+    await openConfirm({
+      title: 'Import Failed',
+      message: 'This file does not contain Weekly Rhythm schedule data.',
+      okText: 'OK',
+      cancelText: 'Close',
+    });
+    return;
+  }
+
+  const ok = await openConfirm({
+    title: 'Import Data',
+    message: 'Importing will replace the current local schedule data on this device.',
+    okText: 'Import',
+    cancelText: 'Cancel',
+  });
+  if (!ok) return;
+
+  saveUserData(LOCAL_USER, importedData);
+  applyImportedPreferences(payload);
+  reloadImportedState(importedData);
+}
+
 if (paletteSelect) {
   paletteSelect.addEventListener('change', () => {
     applyPalette(paletteSelect.value);
+  });
+}
+if (themeToggle) {
+  themeToggle.addEventListener('change', () => {
+    applyTheme(themeToggle.checked ? 'dark' : 'light');
+  });
+}
+if (viewStartInput) viewStartInput.addEventListener('change', updateViewFromControls);
+if (viewEndInput) viewEndInput.addEventListener('change', updateViewFromControls);
+if (viewDayToggles) {
+  viewDayToggles.addEventListener('change', (e) => {
+    if (!e.target.matches('input[type="checkbox"]')) return;
+    updateViewFromControls();
   });
 }
 if (detailNameInput) {
@@ -1129,7 +1672,88 @@ function minsToTimeStr(totalMins) {
 }
 
 function minsToFrac(t) {
-  return (timeToMins(t) - START_H * 60) / 60; // hours from top
+  return (timeToMins(t) - viewStartMins) / 60; // hours from visible top
+}
+
+function getViewDurationMins() {
+  return viewEndMins - viewStartMins;
+}
+
+function getViewDurationHours() {
+  return getViewDurationMins() / 60;
+}
+
+function normalizeViewRange(startMins, endMins) {
+  const minStart = VIEW_MIN_H * 60;
+  const maxEnd = VIEW_MAX_H * 60;
+  let start = Number.isFinite(startMins) ? startMins : DEFAULT_START_H * 60;
+  let end = Number.isFinite(endMins) ? endMins : DEFAULT_END_H * 60;
+  start = Math.max(minStart, Math.min(start, maxEnd - 60));
+  end = Math.max(start + 60, Math.min(end, maxEnd));
+  return { start, end };
+}
+
+function normalizeVisibleDays(days) {
+  const next = [];
+  (Array.isArray(days) ? days : []).forEach((day) => {
+    const value = parseInt(day, 10);
+    if (value >= 1 && value <= 7 && !next.includes(value)) next.push(value);
+  });
+  next.sort((a, b) => a - b);
+  return next.length ? next : [1, 2, 3, 4, 5];
+}
+
+function loadViewSettings() {
+  const stored = safeParse(localStorage.getItem(VIEW_SETTINGS_KEY), null);
+  const range = normalizeViewRange(
+    stored ? timeToMins(stored.start || '') : DEFAULT_START_H * 60,
+    stored ? timeToMins(stored.end || '') : DEFAULT_END_H * 60,
+  );
+  viewStartMins = range.start;
+  viewEndMins = range.end;
+  visibleDays = normalizeVisibleDays(stored && stored.days);
+  syncViewControls();
+}
+
+function persistViewSettings() {
+  localStorage.setItem(VIEW_SETTINGS_KEY, JSON.stringify({
+    start: minsToTimeStr(viewStartMins),
+    end: minsToTimeStr(viewEndMins),
+    days: visibleDays,
+  }));
+}
+
+function syncViewControls() {
+  if (viewStartInput) {
+    viewStartInput.value = minsToTimeStr(viewStartMins);
+    syncCustomPicker(viewStartInput);
+  }
+  if (viewEndInput) {
+    viewEndInput.value = minsToTimeStr(viewEndMins);
+    syncCustomPicker(viewEndInput);
+  }
+  if (viewDayToggles) {
+    viewDayToggles.querySelectorAll('input[type="checkbox"]').forEach((input) => {
+      input.checked = visibleDays.includes(parseInt(input.value, 10));
+    });
+  }
+}
+
+function updateViewFromControls() {
+  const range = normalizeViewRange(
+    viewStartInput ? timeToMins(viewStartInput.value || '') : viewStartMins,
+    viewEndInput ? timeToMins(viewEndInput.value || '') : viewEndMins,
+  );
+  viewStartMins = range.start;
+  viewEndMins = range.end;
+  if (viewDayToggles) {
+    const selected = Array.from(viewDayToggles.querySelectorAll('input[type="checkbox"]:checked'))
+      .map((input) => parseInt(input.value, 10));
+    visibleDays = normalizeVisibleDays(selected);
+  }
+  syncViewControls();
+  persistViewSettings();
+  buildGrid();
 }
 
 function normalizeSlots(raw) {
@@ -1140,9 +1764,11 @@ function normalizeSlots(raw) {
     const day = parseInt(s.day, 10);
     const start = typeof s.start === 'string' ? s.start : '';
     const end = typeof s.end === 'string' ? s.end : '';
-    if (!Number.isFinite(day) || day < 1 || day > 5) return;
+    if (!Number.isFinite(day) || day < 1 || day > 7) return;
     if (!start || !end) return;
-    if (timeToMins(end) <= timeToMins(start)) return;
+    const startMins = timeToMins(start);
+    const endMins = timeToMins(end);
+    if (!Number.isFinite(startMins) || !Number.isFinite(endMins) || endMins <= startMins) return;
     const key = `${day}-${start}-${end}`;
     if (seen.has(key)) return;
     seen.add(key);
@@ -1166,38 +1792,13 @@ function ensureCourseSlots(course) {
   return course;
 }
 
-function setUserUI(userId) {
-  if (currentUserEl) currentUserEl.textContent = userId || 'GUEST';
-  if (panelUserEl) panelUserEl.textContent = userId || '-';
-}
-
-function setAuthStatus(message) {
-  if (!authStatus) return;
-  authStatus.textContent = message || '';
-}
-
-function showAuth() {
-  if (!authBackdrop) return;
-  authBackdrop.classList.add('open');
-  authBackdrop.setAttribute('aria-hidden', 'false');
-  if (authIdInput) authIdInput.focus();
-}
-
-function hideAuth() {
-  if (!authBackdrop) return;
-  authBackdrop.classList.remove('open');
-  authBackdrop.setAttribute('aria-hidden', 'true');
-  setAuthStatus('');
-  if (authPwInput) authPwInput.value = '';
-}
-
 function populateSemesterSelect() {
   if (!semesterSelect) return;
   semesterSelect.innerHTML = '';
   SEMESTERS.forEach((sem) => {
     const opt = document.createElement('option');
     opt.value = sem;
-    opt.textContent = sem;
+    opt.textContent = SEMESTER_LABELS[sem] || sem;
     semesterSelect.appendChild(opt);
   });
   refreshCustomPicker(semesterSelect);
@@ -1220,14 +1821,14 @@ function ensureSemesterData(data, sem) {
   if (!data.semesters[sem] || !Array.isArray(data.semesters[sem].timetables)) {
     const tables = SAMPLE_TABLES.map((t, idx) => ({
       id: `tt-${sem}-${idx + 1}`,
-      name: `${t.name} (${sem})`,
+      name: `${t.name} (${SEMESTER_LABELS[sem] || sem})`,
       courses: cloneCourses(t.courses),
     }));
     data.semesters[sem] = { timetables: tables, activeId: tables[0].id };
   }
   if (!data.semesters[sem].timetables.length) {
     const id = `tt-${sem}-${Date.now()}`;
-    data.semesters[sem].timetables.push({ id, name: `New Timetable (${sem})`, courses: [] });
+    data.semesters[sem].timetables.push({ id, name: `New Schedule (${SEMESTER_LABELS[sem] || sem})`, courses: [] });
     data.semesters[sem].activeId = id;
   }
   return data.semesters[sem];
@@ -1312,133 +1913,133 @@ function getCurrentTable() {
   return semData.timetables.find(t => t.id === currentTableId) || null;
 }
 
-async function handleLogin() {
-  const id = authIdInput ? authIdInput.value.trim() : '';
-  const pw = authPwInput ? authPwInput.value : '';
-  if (!id || !pw) {
-    setAuthStatus('Please enter your ID and password.');
-    return;
+function deleteTimetable() {
+  if (!currentUserId || !currentSemester || !currentTableId) return;
+  const data = ensureUserData(currentUserId);
+  const semData = ensureSemesterData(data, currentSemester);
+  semData.timetables = semData.timetables.filter((t) => t.id !== currentTableId);
+  if (semData.timetables.length) {
+    semData.activeId = semData.timetables[0].id;
+  } else {
+    semData.activeId = null; // ensureSemesterData will reseed a fresh table on reload
   }
-  const users = getUsers();
-  if (!users[id]) {
-    setAuthStatus('User does not exist.');
-    return;
-  }
-  const hash = await hashPassword(pw);
-  if (users[id].pw !== hash) {
-    setAuthStatus('Incorrect password.');
-    return;
-  }
-  currentUserId = id;
-  setSessionUser(id);
-  setUserUI(id);
-  hideAuth();
-  ensureUserData(id);
-  populateSemesterSelect();
-  loadCurrentTimetable();
-}
-
-async function handleRegister() {
-  const id = authIdInput ? authIdInput.value.trim() : '';
-  const pw = authPwInput ? authPwInput.value : '';
-  if (!id || !pw) {
-    setAuthStatus('Please enter your ID and password.');
-    return;
-  }
-  const users = getUsers();
-  if (users[id]) {
-    setAuthStatus('User already exists.');
-    return;
-  }
-  const hash = await hashPassword(pw);
-  users[id] = { pw: hash };
-  setUsers(users);
-  currentUserId = id;
-  setSessionUser(id);
-  setUserUI(id);
-  ensureUserData(id);
-  hideAuth();
-  populateSemesterSelect();
-  loadCurrentTimetable();
-}
-
-function handleLogout() {
-  clearSessionUser();
-  currentUserId = null;
-  currentSemester = null;
   currentTableId = null;
-  courses = [];
-  nextId = 1;
-  setUserUI(null);
-  if (paletteSelect) {
-    paletteSelect.value = '';
-    refreshCustomPicker(paletteSelect);
-  }
-  buildGrid();
-  showAuth();
+  saveUserData(currentUserId, data);
+  loadCurrentTimetable();
 }
 
 // ── Render ───────────────────────────────────────────
 function buildGrid() {
   const tbl = document.getElementById('timetable');
-  // remove old rows (keep 6 header cells)
-  while (tbl.children.length > 6) tbl.removeChild(tbl.lastChild);
+  if (!tbl) return;
+  tbl.innerHTML = '';
+  tbl.style.setProperty('--day-count', String(visibleDays.length));
+  tbl.style.gridTemplateColumns = `var(--time-w) repeat(${visibleDays.length}, minmax(var(--col-min), 1fr))`;
+  tbl.style.minWidth = `${56 + visibleDays.length * 120}px`;
 
   const infoOrder = CARD_INFO_ORDER.filter((key) => cardInfoSelection.includes(key));
 
-  for (let h = START_H; h < END_H; h++) {
+  const timeHeader = document.createElement('div');
+  timeHeader.className = 'day-header time-header';
+  timeHeader.textContent = 'TIME';
+  tbl.appendChild(timeHeader);
+
+  visibleDays.forEach((day, idx) => {
+    const header = document.createElement('div');
+    header.className = `day-header${idx === visibleDays.length - 1 ? ' last-day-header' : ''}`;
+    header.lang = 'en';
+    header.textContent = DAY_LABELS[day] || '';
+    header.dataset.day = String(day);
+    tbl.appendChild(header);
+  });
+
+  for (let mins = viewStartMins; mins < viewEndMins; mins += 60) {
     const label = document.createElement('div');
     label.className = 'time-label';
-    label.textContent = String(h).padStart(2,'0') + ':00';
+    label.textContent = minsToTimeStr(mins);
     tbl.appendChild(label);
 
-    for (let d = 1; d <= 5; d++) {
+    visibleDays.forEach((d, idx) => {
       const cell = document.createElement('div');
-      cell.className = 'grid-cell';
+      cell.className = `grid-cell${idx === visibleDays.length - 1 ? ' last-day-cell' : ''}`;
       cell.dataset.day = d;
-      cell.dataset.hour = h;
+      cell.dataset.mins = mins;
       tbl.appendChild(cell);
-    }
+    });
   }
 
-  // place course cards
-  courses.forEach((course) => {
+  // gather every slot as a placement, grouped by day
+  const placementsByDay = {};
+  visibleDays.forEach((day) => { placementsByDay[day] = []; });
+  const renderCourses = routinePreviewCourse ? [...courses, routinePreviewCourse] : courses;
+  renderCourses.forEach((course) => {
     const c = ensureCourseSlots(course);
-    const slots = c.slots || [];
-    slots.forEach((slot) => {
-      const startFrac = minsToFrac(slot.start); // offset in hours from top
-      const durMins   = timeToMins(slot.end) - timeToMins(slot.start);
-      const durFrac   = durMins / 60; // duration in hours
-      const isShort   = durMins <= 60;
-      const gap       = isShort ? 2 : 3;
+    (c.slots || []).forEach((slot, slotIndex) => {
+      const startMins = timeToMins(slot.start);
+      const endMins = timeToMins(slot.end);
+      if (!(endMins > startMins)) return;
+      if (placementsByDay[slot.day]) {
+        if (endMins <= viewStartMins || startMins >= viewEndMins) return;
+        placementsByDay[slot.day].push({
+          course: c,
+          slot,
+          slotIndex,
+          startMins: Math.max(startMins, viewStartMins),
+          endMins: Math.min(endMins, viewEndMins),
+          rawStartMins: startMins,
+          rawEndMins: endMins,
+        });
+      }
+    });
+  });
 
-      const topPx     = startFrac * ROW_H + gap;          // small gap within row
-      const heightPx  = durFrac   * ROW_H - gap * 2;      // top+bottom gap
+  // place course cards, laying overlapping slots out side-by-side (Notion-style)
+  Object.keys(placementsByDay).forEach((day) => {
+    const items = assignOverlapColumns(placementsByDay[day]);
+    const cells = tbl.querySelectorAll(`.grid-cell[data-day="${day}"]`);
+    if (!cells.length) return;
+    const anchorCell = cells[0]; // first visible row
 
-      // find first grid-cell of that column
-      const cells = tbl.querySelectorAll(`.grid-cell[data-day="${slot.day}"]`);
-      if (!cells.length) return;
-      const anchorCell = cells[0]; // first cell = START_H row
+    items.forEach((item) => {
+      const c = item.course;
+      const slot = item.slot;
+      const durMins = item.endMins - item.startMins;
+      const durFrac = durMins / 60;
+      const isShort = durMins <= 60;
+      const gap = isShort ? 2 : 3;
+
+      const topPx    = (item.startMins - viewStartMins) / 60 * ROW_H + gap;
+      const heightPx = Math.max(durFrac * ROW_H - gap * 2, 6);
 
       const card = document.createElement('div');
-      card.className = `course-card ${c.color}${isShort ? ' short' : ''}`;
-      card.style.top    = topPx  + 'px';
+      const isPreview = Boolean(c.isPreview);
+      const presetColorClass = COLOR_ACCENTS[c.color] ? c.color : (isCustomColor(c.color) ? '' : 'c-navy');
+      card.className = `course-card${presetColorClass ? ` ${presetColorClass}` : ''}${isShort ? ' short' : ''}${isPreview ? ' routine-preview' : ''}`;
+      applyCourseColorVars(card, c.color);
+      card.style.top    = topPx + 'px';
       card.style.height = heightPx + 'px';
-      card.dataset.id   = c.id;
-      card.onclick = () => openDetail(c.id);
+
+      // side-by-side columns for overlapping slots
+      const cols = item.cols || 1;
+      const colGap = cols > 1 ? 2 : 0;
+      card.style.left  = `calc(3px + ${item.col} * (100% - 6px) / ${cols})`;
+      card.style.right = 'auto';
+      card.style.width = `calc((100% - 6px) / ${cols} - ${colGap}px)`;
+      card.dataset.id = c.id;
+      card.title = [c.name, c.prof, c.room].filter(Boolean).join(' · ');
 
       const infoLines = [];
       infoOrder.forEach((key) => {
         if (key === 'prof' && c.prof) infoLines.push({ type: 'prof', text: c.prof });
         if (key === 'room' && c.room) infoLines.push({ type: 'room', text: c.room });
-        if (key === 'credit') infoLines.push({ type: 'credit', text: `${c.credit} Credit` });
+        if (key === 'credit') infoLines.push({ type: 'credit', text: `Priority ${c.credit}` });
       });
 
       if (isShort) {
         let shortText = '';
         if (cardInfoSelection.includes('room') && c.room) shortText = c.room;
         else if (cardInfoSelection.includes('prof') && c.prof) shortText = c.prof;
-        else if (cardInfoSelection.includes('credit')) shortText = `${c.credit} Credit`;
+        else if (cardInfoSelection.includes('credit')) shortText = `Priority ${c.credit}`;
         const suffix = shortText ? ` | ${shortText}` : '';
         card.innerHTML = `
           <div class="card-body">
@@ -1455,6 +2056,30 @@ function buildGrid() {
           </div>`;
       }
 
+      // resize handles (appended after innerHTML so they aren't wiped)
+      const topHandle = document.createElement('div');
+      topHandle.className = 'resize-handle resize-top';
+      const botHandle = document.createElement('div');
+      botHandle.className = 'resize-handle resize-bottom';
+      card.appendChild(topHandle);
+      card.appendChild(botHandle);
+
+      // drag: move on body, resize on handles; a click (no move) opens detail
+      if (!isPreview) {
+        card.addEventListener('pointerdown', (e) => {
+          if (e.target.closest('.resize-handle')) return;
+          beginCardDrag(e, c, slot, 'move', item.slotIndex);
+        });
+        topHandle.addEventListener('pointerdown', (e) => {
+          e.stopPropagation();
+          beginCardDrag(e, c, slot, 'resize-top', item.slotIndex);
+        });
+        botHandle.addEventListener('pointerdown', (e) => {
+          e.stopPropagation();
+          beginCardDrag(e, c, slot, 'resize-bottom', item.slotIndex);
+        });
+      }
+
       anchorCell.appendChild(card);
     });
   });
@@ -1463,13 +2088,53 @@ function buildGrid() {
   scheduleFitTimetableForMobile();
 }
 
+// Greedy interval-graph layout: assign each slot a column index (`col`) and the
+// total column count of its overlap cluster (`cols`) so overlaps sit side-by-side.
+function assignOverlapColumns(items) {
+  items.sort((a, b) => a.startMins - b.startMins || a.endMins - b.endMins);
+  let cluster = [];
+  let colEnds = [];         // end time of the last slot placed in each column
+  let clusterMaxEnd = -Infinity;
+
+  const flush = () => {
+    const cols = colEnds.length;
+    cluster.forEach((it) => { it.cols = cols; });
+    cluster = [];
+    colEnds = [];
+    clusterMaxEnd = -Infinity;
+  };
+
+  items.forEach((it) => {
+    if (cluster.length && it.startMins >= clusterMaxEnd) flush();
+    let placed = -1;
+    for (let i = 0; i < colEnds.length; i++) {
+      if (colEnds[i] <= it.startMins) { placed = i; break; }
+    }
+    if (placed === -1) { placed = colEnds.length; colEnds.push(it.endMins); }
+    else colEnds[placed] = it.endMins;
+    it.col = placed;
+    cluster.push(it);
+    clusterMaxEnd = Math.max(clusterMaxEnd, it.endMins);
+  });
+  flush();
+  return items;
+}
+
 function renderDraftOverlays() {
   if (!timetableEl) return;
   timetableEl.querySelectorAll('.draft-slot').forEach((el) => el.remove());
+  if (activeId != null) return;
+  if (routinePreviewCourse) return;
   if (!draftSlots.length) return;
   draftSlots.forEach((slot) => {
-    const startFrac = minsToFrac(slot.start);
-    const durMins = timeToMins(slot.end) - timeToMins(slot.start);
+    if (!visibleDays.includes(slot.day)) return;
+    const rawStart = timeToMins(slot.start);
+    const rawEnd = timeToMins(slot.end);
+    if (rawEnd <= viewStartMins || rawStart >= viewEndMins) return;
+    const start = Math.max(rawStart, viewStartMins);
+    const end = Math.min(rawEnd, viewEndMins);
+    const startFrac = (start - viewStartMins) / 60;
+    const durMins = end - start;
     if (durMins <= 0) return;
     const durFrac = durMins / 60;
     const isShort = durMins <= 60;
@@ -1489,6 +2154,7 @@ function renderDraftOverlays() {
 }
 
 // ── Drag to add ─────────────────────────────────────
+const SLOT_DRAG_THRESHOLD = 4;
 let isDraggingSlot = false;
 let dragPointerId = null;
 let dragDay = null;
@@ -1496,6 +2162,10 @@ let dragStartMins = null;
 let dragEndMins = null;
 let dragGhost = null;
 let dragAnchor = null;
+let dragStartX = 0;
+let dragStartY = 0;
+let dragMoved = false;
+let dragPreparedFreshDraft = false;
 
 function getDayFromClientX(clientX) {
   if (!timetableEl) return null;
@@ -1506,10 +2176,11 @@ function getDayFromClientX(clientX) {
     : (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--time-w')) || 56);
   const x = clientX - rect.left;
   if (x <= timeW) return null;
-  const colW = (rect.width - timeW) / 5;
+  const dayCount = visibleDays.length || 1;
+  const colW = (rect.width - timeW) / dayCount;
   const idx = Math.floor((x - timeW) / colW);
-  if (idx < 0 || idx > 4) return null;
-  return idx + 1;
+  if (idx < 0 || idx >= dayCount) return null;
+  return visibleDays[idx] || null;
 }
 
 function getMinsFromClientY(clientY, mode = 'floor') {
@@ -1520,32 +2191,99 @@ function getMinsFromClientY(clientY, mode = 'floor') {
   const top = labelRect.top;
   const rowH = labelRect.height || ROW_H;
   const offset = clientY - top;
-  const totalMins = HOURS * 60;
-  const raw = Math.max(0, Math.min(offset, HOURS * rowH)) / rowH * 60;
+  const totalMins = getViewDurationMins();
+  const maxPx = getViewDurationHours() * rowH;
+  const raw = Math.max(0, Math.min(offset, maxPx)) / rowH * 60;
   const snapped = mode === 'ceil'
     ? Math.ceil(raw / TIME_STEP) * TIME_STEP
     : Math.floor(raw / TIME_STEP) * TIME_STEP;
   const mins = Math.max(0, Math.min(snapped, totalMins));
-  return START_H * 60 + mins;
+  return viewStartMins + mins;
+}
+
+// Unsnapped absolute minutes at a Y position (used by card move/resize).
+function getRawMinsFromClientY(clientY) {
+  if (!timetableEl) return viewStartMins;
+  const firstLabel = timetableEl.querySelector('.time-label');
+  if (!firstLabel) return viewStartMins;
+  const labelRect = firstLabel.getBoundingClientRect();
+  const rowH = labelRect.height || ROW_H;
+  const offset = clientY - labelRect.top;
+  const maxPx = getViewDurationHours() * rowH;
+  const raw = Math.max(0, Math.min(offset, maxPx)) / rowH * 60;
+  return viewStartMins + raw;
 }
 
 function updateDragGhost() {
   if (!dragGhost || dragStartMins == null || dragEndMins == null) return;
   const start = Math.min(dragStartMins, dragEndMins);
   const end = Math.max(dragStartMins, dragEndMins);
-  const minDuration = TIME_STEP;
-  const clampedEnd = Math.max(start + minDuration, end);
+  const isZeroHeight = end <= start;
+  const clampedEnd = isZeroHeight ? start : Math.max(start + TIME_STEP, end);
   const gap = 2;
-  const topPx = ((start - START_H * 60) / 60) * ROW_H + gap;
-  const heightPx = ((clampedEnd - start) / 60) * ROW_H - gap * 2;
+  const topPx = ((start - viewStartMins) / 60) * ROW_H + (isZeroHeight ? 0 : gap);
+  const heightPx = isZeroHeight ? 0 : ((clampedEnd - start) / 60) * ROW_H - gap * 2;
   dragGhost.style.top = `${topPx}px`;
   dragGhost.style.height = `${heightPx}px`;
+  const label = dragGhost.querySelector('.drag-ghost-label');
+  if (label) {
+    label.textContent = isZeroHeight
+      ? ''
+      : `${DAY_LABELS[dragDay] || ''} ${minsToTimeStr(start)}–${minsToTimeStr(clampedEnd)}`;
+  }
+}
+
+function createDragGhost() {
+  if (dragGhost || !timetableEl || !dragDay) return;
+  const anchorCell = timetableEl.querySelector(`.grid-cell[data-day="${dragDay}"]`);
+  if (!anchorCell) return;
+  dragAnchor = anchorCell;
+  dragGhost = document.createElement('div');
+  dragGhost.className = 'drag-ghost selecting';
+  dragGhost.innerHTML = '<span class="drag-ghost-label"></span>';
+  dragAnchor.appendChild(dragGhost);
+  document.body.classList.add('selecting-slot');
+  updateDragGhost();
+}
+
+function prepareFreshRoutineDraftFromDrag() {
+  if (dragPreparedFreshDraft) return;
+  dragPreparedFreshDraft = true;
+  livePreviewSuspended = true;
+  activeId = null;
+  disarmRoutineDeleteShortcut();
+  clearRoutineEditState();
+  syncRoutineEditorMode();
+  clearRoutineFields();
+  livePreviewSuspended = false;
+}
+
+function clearEmptyRoutineDraftFromGridClick() {
+  if (activeId != null) return false;
+  if (!draftSlots.length) return false;
+  if (routinePreviewCourse) return false;
+  if (hasRoutineEditorContent()) return false;
+  livePreviewSuspended = true;
+  clearRoutineFields();
+  livePreviewSuspended = false;
+  syncRoutineEditorMode();
+  return true;
 }
 
 function clearDragGhost() {
   if (dragGhost && dragGhost.parentNode) dragGhost.parentNode.removeChild(dragGhost);
   dragGhost = null;
   dragAnchor = null;
+  document.body.classList.remove('selecting-slot');
+}
+
+function moveDragGhostToDay(day) {
+  const anchorCell = timetableEl.querySelector(`.grid-cell[data-day="${day}"]`);
+  if (!anchorCell || !dragGhost) return false;
+  if (dragGhost.parentNode !== anchorCell) anchorCell.appendChild(dragGhost);
+  dragAnchor = anchorCell;
+  dragDay = day;
+  return true;
 }
 
 function startDragAdd(e) {
@@ -1555,6 +2293,7 @@ function startDragAdd(e) {
   if (!day) return;
   const start = getMinsFromClientY(e.clientY, 'floor');
   if (start == null) return;
+  const safeStart = Math.min(start, viewEndMins - TIME_STEP);
   const firstLabel = timetableEl.querySelector('.time-label');
   if (!firstLabel) return;
   if (e.clientY < firstLabel.getBoundingClientRect().top) return;
@@ -1565,23 +2304,38 @@ function startDragAdd(e) {
   isDraggingSlot = true;
   dragPointerId = e.pointerId;
   dragDay = day;
-  dragStartMins = start;
-  dragEndMins = start + TIME_STEP;
+  dragStartMins = safeStart;
+  dragEndMins = safeStart;
   dragAnchor = anchorCell;
-  dragGhost = document.createElement('div');
-  dragGhost.className = 'drag-ghost';
-  dragAnchor.appendChild(dragGhost);
-  updateDragGhost();
+  dragStartX = e.clientX;
+  dragStartY = e.clientY;
+  dragMoved = false;
+  dragPreparedFreshDraft = false;
 
   timetableEl.setPointerCapture?.(e.pointerId);
   window.addEventListener('pointermove', onDragMove);
   window.addEventListener('pointerup', onDragEnd);
+  window.addEventListener('pointercancel', onDragCancel);
   e.preventDefault();
 }
 
 function onDragMove(e) {
   if (!isDraggingSlot || e.pointerId !== dragPointerId) return;
-  const current = getMinsFromClientY(e.clientY, 'ceil');
+  const nextDay = getDayFromClientX(e.clientX);
+  if (nextDay) dragDay = nextDay;
+  if (!dragMoved) {
+    const dx = Math.abs(e.clientX - dragStartX);
+    const dy = Math.abs(e.clientY - dragStartY);
+    if (dx >= SLOT_DRAG_THRESHOLD || dy >= SLOT_DRAG_THRESHOLD) {
+      dragMoved = true;
+      prepareFreshRoutineDraftFromDrag();
+      createDragGhost();
+      if (dragGhost) dragGhost.classList.add('is-live');
+    }
+  }
+  if (nextDay) moveDragGhostToDay(nextDay);
+  const raw = getRawMinsFromClientY(e.clientY);
+  const current = getMinsFromClientY(e.clientY, raw >= dragStartMins ? 'ceil' : 'floor');
   if (current == null) return;
   dragEndMins = current;
   updateDragGhost();
@@ -1592,67 +2346,455 @@ function onDragEnd(e) {
   if (!isDraggingSlot || e.pointerId !== dragPointerId) return;
   window.removeEventListener('pointermove', onDragMove);
   window.removeEventListener('pointerup', onDragEnd);
+  window.removeEventListener('pointercancel', onDragCancel);
   timetableEl.releasePointerCapture?.(e.pointerId);
   isDraggingSlot = false;
 
-  const start = Math.min(dragStartMins, dragEndMins);
-  const end = Math.max(dragStartMins, dragEndMins);
+  if (!dragMoved) {
+    clearDragGhost();
+    clearEmptyRoutineDraftFromGridClick();
+    return;
+  }
+
+  let start = Math.min(dragStartMins, dragEndMins);
+  let end = Math.max(dragStartMins, dragEndMins);
+  if (end <= start) end = Math.min(start + TIME_STEP, viewEndMins);
   clearDragGhost();
 
   const startStr = minsToTimeStr(start);
   const endStr = minsToTimeStr(Math.max(end, start + TIME_STEP));
   const slot = { day: dragDay, start: startStr, end: endStr };
+  prepareFreshRoutineDraftFromDrag();
+  syncRoutineEditorMode();
   if (startInput) startInput.value = startStr;
   if (endInput) endInput.value = endStr;
   syncCustomPicker(startInput);
   syncCustomPicker(endInput);
   setSelectedDays([dragDay]);
-  if (e.ctrlKey || e.metaKey) addDraftSlots([slot]);
-  else setDraftSlots([slot]);
-  openPanel();
+  setDraftSlots([slot]);
+  openPanel({ focus: true, anchorRect: getSlotClientRect(slot) });
+}
+
+function onDragCancel(e) {
+  if (!isDraggingSlot || e.pointerId !== dragPointerId) return;
+  window.removeEventListener('pointermove', onDragMove);
+  window.removeEventListener('pointerup', onDragEnd);
+  window.removeEventListener('pointercancel', onDragCancel);
+  timetableEl.releasePointerCapture?.(e.pointerId);
+  isDraggingSlot = false;
+  clearDragGhost();
 }
 
 if (timetableEl) {
   timetableEl.addEventListener('pointerdown', startDragAdd);
 }
 
-// ── Detail modal ────────────────────────────────────
-function openDetail(id) {
+// ── Drag to move / resize existing cards ────────────
+const CARD_DRAG_THRESHOLD = 4; // px before a press becomes a drag (else it's a click)
+let cardDrag = null;
+
+function beginCardDrag(e, course, slot, mode, slotIndex = -1) {
+  if (e.button != null && e.button !== 0) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const card = e.currentTarget.closest ? e.currentTarget.closest('.course-card') : null;
+  const cardEl = card || (e.target.closest && e.target.closest('.course-card'));
+  if (!cardEl) return;
+  const startMins = timeToMins(slot.start);
+  const endMins = timeToMins(slot.end);
+  cardDrag = {
+    mode, course, slot, slotIndex, card: cardEl,
+    pointerId: e.pointerId,
+    startX: e.clientX, startY: e.clientY,
+    startRawMins: getRawMinsFromClientY(e.clientY),
+    origDay: slot.day,
+    origStartMins: startMins,
+    origEndMins: endMins,
+    duration: endMins - startMins,
+    newDay: slot.day,
+    newStartMins: startMins,
+    newEndMins: endMins,
+    moved: false,
+  };
+  cardEl.setPointerCapture?.(e.pointerId);
+  window.addEventListener('pointermove', onCardDragMove);
+  window.addEventListener('pointerup', onCardDragEnd);
+  window.addEventListener('pointercancel', onCardDragEnd);
+}
+
+function onCardDragMove(e) {
+  if (!cardDrag || e.pointerId !== cardDrag.pointerId) return;
+  if (!cardDrag.moved) {
+    if (Math.abs(e.clientX - cardDrag.startX) < CARD_DRAG_THRESHOLD &&
+        Math.abs(e.clientY - cardDrag.startY) < CARD_DRAG_THRESHOLD) return;
+    cardDrag.moved = true;
+    cardDrag.card.classList.add('dragging');
+    document.body.classList.add('dragging-card');
+  }
+  const curRaw = getRawMinsFromClientY(e.clientY);
+  const dayTop = viewStartMins;
+  const dayEnd = viewEndMins;
+
+  if (cardDrag.mode === 'move') {
+    const delta = Math.round((curRaw - cardDrag.startRawMins) / TIME_STEP) * TIME_STEP;
+    let ns = cardDrag.origStartMins + delta;
+    ns = Math.max(dayTop, Math.min(ns, dayEnd - cardDrag.duration));
+    cardDrag.newStartMins = ns;
+    cardDrag.newEndMins = ns + cardDrag.duration;
+    const day = getDayFromClientX(e.clientX);
+    if (day) cardDrag.newDay = day;
+  } else if (cardDrag.mode === 'resize-bottom') {
+    let ne = Math.round(curRaw / TIME_STEP) * TIME_STEP;
+    ne = Math.max(cardDrag.origStartMins + TIME_STEP, Math.min(ne, dayEnd));
+    cardDrag.newStartMins = cardDrag.origStartMins;
+    cardDrag.newEndMins = ne;
+  } else { // resize-top
+    let ns = Math.round(curRaw / TIME_STEP) * TIME_STEP;
+    ns = Math.min(cardDrag.origEndMins - TIME_STEP, Math.max(ns, dayTop));
+    cardDrag.newStartMins = ns;
+    cardDrag.newEndMins = cardDrag.origEndMins;
+  }
+  updateCardDragVisual();
+  e.preventDefault();
+}
+
+function updateCardDragVisual() {
+  const cd = cardDrag;
+  if (!cd || !cd.card) return;
+  const durMins = cd.newEndMins - cd.newStartMins;
+  const isShort = durMins <= 60;
+  const gap = isShort ? 2 : 3;
+  const topPx = (cd.newStartMins - viewStartMins) / 60 * ROW_H + gap;
+  const heightPx = durMins / 60 * ROW_H - gap * 2;
+  if (cd.mode === 'move') {
+    const anchor = timetableEl.querySelector(`.grid-cell[data-day="${cd.newDay}"]`);
+    if (anchor && cd.card.parentNode !== anchor) anchor.appendChild(cd.card);
+    cd.card.style.left = '3px';
+    cd.card.style.right = 'auto';
+    cd.card.style.width = 'calc(100% - 6px)';
+  }
+  cd.card.style.top = `${topPx}px`;
+  cd.card.style.height = `${Math.max(heightPx, 6)}px`;
+  cd.card.classList.toggle('short', isShort);
+}
+
+function onCardDragEnd(e) {
+  if (!cardDrag || e.pointerId !== cardDrag.pointerId) return;
+  window.removeEventListener('pointermove', onCardDragMove);
+  window.removeEventListener('pointerup', onCardDragEnd);
+  window.removeEventListener('pointercancel', onCardDragEnd);
+  cardDrag.card.releasePointerCapture?.(e.pointerId);
+  document.body.classList.remove('dragging-card');
+  const cd = cardDrag;
+  cardDrag = null;
+  cd.card.classList.remove('dragging');
+
+  if (!cd.moved) {
+    if (cd.mode === 'move') openDetail(cd.course.id, { anchorRect: cd.card.getBoundingClientRect() }); // press without drag = click
+    return;
+  }
+
+  const currentSlots = Array.isArray(cd.course.slots) ? cd.course.slots : [];
+  const targetSlot = currentSlots[cd.slotIndex]
+    || currentSlots.find((slot) => (
+      slot.day === cd.origDay
+      && slot.start === minsToTimeStr(cd.origStartMins)
+      && slot.end === minsToTimeStr(cd.origEndMins)
+    ))
+    || cd.slot;
+
+  targetSlot.day = cd.newDay;
+  targetSlot.start = minsToTimeStr(cd.newStartMins);
+  targetSlot.end = minsToTimeStr(cd.newEndMins);
+  if (!currentSlots.includes(targetSlot)) currentSlots.push(targetSlot);
+  cd.course.slots = currentSlots;
+  cd.course.slots = normalizeSlots(cd.course.slots);
+  if (cd.course.slots[0]) {
+    cd.course.day = cd.course.slots[0].day;
+    cd.course.start = cd.course.slots[0].start;
+    cd.course.end = cd.course.slots[0].end;
+  }
+  persistCurrentCourses();
+  buildGrid();
+  if (activeId === cd.course.id) {
+    setDraftSlots(cd.course.slots, { livePreview: false, editIndex: cd.slotIndex >= 0 ? cd.slotIndex : 0 });
+    setAddSlotInputsFromSlot(cd.course.slots && (cd.course.slots[draftSlotEditIndex] || cd.course.slots[0]));
+  }
+}
+
+// ── Routine editor ──────────────────────────────────
+function applyRoutinePayloadToCourse(target, payload) {
+  if (!target || !payload) return;
+  const slots = normalizeSlots(payload.slots);
+  target.name = payload.name;
+  target.prof = payload.prof;
+  target.room = payload.room;
+  target.credit = payload.credit;
+  target.color = payload.color;
+  target.slots = slots;
+  if (slots[0]) {
+    target.day = slots[0].day;
+    target.start = slots[0].start;
+    target.end = slots[0].end;
+  } else {
+    delete target.day;
+    delete target.start;
+    delete target.end;
+  }
+}
+
+function cancelRoutineLivePreviewFrame() {
+  if (!livePreviewRaf) return;
+  cancelAnimationFrame(livePreviewRaf);
+  livePreviewRaf = 0;
+}
+
+function clearRoutineEditState() {
+  draftSlotEditIndex = null;
+  cancelRoutineLivePreviewFrame();
+}
+
+function hasRoutineEditorContent() {
+  const textValues = [nameInput, profInput, roomInput]
+    .map((input) => (input ? input.value.trim() : ''));
+  const creditValue = creditInput ? creditInput.value.trim() : '';
+  return textValues.some(Boolean) || Boolean(creditValue);
+}
+
+function clearRoutinePreview(options = {}) {
+  const hadPreview = Boolean(routinePreviewCourse);
+  routinePreviewCourse = null;
+  if (hadPreview && options.rebuild) buildGrid();
+}
+
+function readRoutineEditorPreviewPayload() {
+  const isEditing = activeId != null;
+  const current = isEditing
+    ? courses.find((course) => course.id === activeId)
+    : routinePreviewCourse;
+  const fallback = isEditing ? (current || {}) : {};
+  const name = nameInput ? nameInput.value.trim() : '';
+  const prof = profInput ? profInput.value.trim() : '';
+  const room = roomInput ? roomInput.value.trim() : '';
+  const creditRaw = creditInput ? parseInt(creditInput.value, 10) : NaN;
+  let slots = draftSlots.length ? draftSlots : [];
+
+  if (!slots.length) {
+    const fromInputs = buildSlotsFromAddInputs({ focus: false });
+    if (fromInputs) slots = fromInputs;
+  }
+  slots = normalizeSlots(slots);
+  if (!slots.length) return null;
+  if (!isEditing && !hasRoutineEditorContent()) return null;
+
+  return {
+    name: name || fallback.name || 'Untitled Routine',
+    prof,
+    room,
+    credit: Number.isFinite(creditRaw) ? Math.min(6, Math.max(1, creditRaw)) : (fallback.credit || 3),
+    color: selectedColor || fallback.color || 'c-navy',
+    slots,
+  };
+}
+
+function promoteDraftPreviewToRoutine(payload) {
+  if (!payload || activeId != null) return null;
+  const target = { id: nextId++ };
+  applyRoutinePayloadToCourse(target, payload);
+  courses.push(target);
+  activeId = target.id;
+  disarmRoutineDeleteShortcut();
+  clearRoutinePreview();
+  persistCurrentCourses();
+  syncRoutineEditorMode();
+  return target;
+}
+
+function applyRoutineLivePreview() {
+  livePreviewRaf = 0;
+  if (livePreviewSuspended) return;
+  const payload = readRoutineEditorPreviewPayload();
+  if (activeId != null) {
+    const target = courses.find((course) => course.id === activeId);
+    if (!target || !payload) return;
+    applyRoutinePayloadToCourse(target, payload);
+    persistCurrentCourses();
+    buildGrid();
+    return;
+  }
+  if (!payload) {
+    clearRoutinePreview({ rebuild: true });
+    return;
+  }
+  if (!promoteDraftPreviewToRoutine(payload)) return;
+  buildGrid();
+}
+
+function requestRoutineLivePreview() {
+  if (livePreviewSuspended) return;
+  if (activeId == null && !draftSlots.length) {
+    clearRoutinePreview({ rebuild: true });
+    return;
+  }
+  if (livePreviewRaf) cancelAnimationFrame(livePreviewRaf);
+  livePreviewRaf = requestAnimationFrame(applyRoutineLivePreview);
+}
+
+function updateSelectedDraftSlotFromInputs() {
+  if (livePreviewSuspended) return;
+  const slots = buildSlotsFromAddInputs({ focus: false });
+  if (!slots || !slots.length) {
+    requestRoutineLivePreview();
+    return;
+  }
+  const slot = slots[0];
+  const next = draftSlots.slice();
+  const idx = next.length
+    ? Math.max(0, Math.min(Number.isFinite(draftSlotEditIndex) ? draftSlotEditIndex : 0, next.length - 1))
+    : 0;
+  next[idx] = slot;
+  setDraftSlots(next, { editSlot: slot });
+}
+
+function syncRoutineEditorMode() {
+  const editing = activeId != null;
+  if (panelTitle) panelTitle.textContent = editing ? 'Edit Routine' : 'Add Routine';
+  if (routineSubmitBtn) {
+    routineSubmitBtn.textContent = 'ADD ROUTINE';
+    routineSubmitBtn.hidden = editing;
+  }
+  if (deleteRoutineBtn) deleteRoutineBtn.hidden = !editing;
+  if (panelEl) panelEl.classList.toggle('is-editing', editing);
+}
+
+function clearRoutineFields() {
+  clearRoutinePreview({ rebuild: true });
+  if (nameInput) nameInput.value = '';
+  if (profInput) profInput.value = '';
+  if (roomInput) roomInput.value = '';
+  if (creditInput) creditInput.value = '';
+  clearSelectedDays();
+  if (startInput) {
+    startInput.value = '';
+    syncCustomPicker(startInput);
+  }
+  if (endInput) {
+    endInput.value = '';
+    syncCustomPicker(endInput);
+  }
+  clearDraftSlots();
+}
+
+function startNewRoutine(options = {}) {
+  routineDeleteShortcutArmed = false;
+  activeId = null;
+  disarmRoutineDeleteShortcut();
+  clearRoutineEditState();
+  syncRoutineEditorMode();
+  if (options.clear !== false) clearRoutineFields();
+  openPanel({ focus: options.focus !== false });
+}
+
+function armRoutineDeleteShortcut() {
+  routineDeleteShortcutArmed = true;
+}
+
+function disarmRoutineDeleteShortcut() {
+  routineDeleteShortcutArmed = false;
+}
+
+function blurRoutineEditorFocus() {
+  const active = document.activeElement;
+  if (!active || active === document.body || active === document.documentElement) return;
+  if (panelEl && panelEl.contains(active) && typeof active.blur === 'function') active.blur();
+}
+
+function readRoutineEditorPayload() {
+  const name = nameInput ? nameInput.value.trim() : '';
+  const prof = profInput ? profInput.value.trim() : '';
+  const room = roomInput ? roomInput.value.trim() : '';
+  const creditRaw = creditInput ? parseInt(creditInput.value, 10) : NaN;
+
+  if (!name) {
+    if (nameInput) nameInput.focus();
+    return null;
+  }
+
+  let slots = draftSlots.length ? draftSlots : [];
+  if (!slots.length) {
+    const fromInputs = buildSlotsFromAddInputs();
+    if (!fromInputs) return null;
+    slots = fromInputs;
+  }
+  slots = normalizeSlots(slots);
+  if (!slots.length) return null;
+
+  return {
+    name,
+    prof,
+    room,
+    credit: Number.isFinite(creditRaw) ? Math.min(6, Math.max(1, creditRaw)) : 3,
+    color: selectedColor,
+    slots,
+  };
+}
+
+function saveRoutineFromPanel() {
+  cancelRoutineLivePreviewFrame();
+  if (activeId != null) return;
+  const payload = readRoutineEditorPayload();
+  if (!payload) return;
+
+  const target = { id: nextId++ };
+  applyRoutinePayloadToCourse(target, payload);
+  clearRoutinePreview();
+
+  courses.push(target);
+  persistCurrentCourses();
+  buildGrid();
+
+  activeId = null;
+  disarmRoutineDeleteShortcut();
+  clearRoutineEditState();
+  syncRoutineEditorMode();
+  clearRoutineFields();
+}
+
+function loadRoutineIntoPanel(course, options = {}) {
+  if (!course) return;
+  cancelRoutineLivePreviewFrame();
+  clearRoutinePreview({ rebuild: true });
+  activeId = course.id;
+  ensureCourseSlots(course);
+  livePreviewSuspended = true;
+  if (nameInput) nameInput.value = course.name || '';
+  if (profInput) profInput.value = course.prof || '';
+  if (roomInput) roomInput.value = course.room || '';
+  if (creditInput) creditInput.value = course.credit || '';
+  selectedColor = course.color || 'c-navy';
+  setSwatchSelection(swatches, selectedColor);
+  draftSlotEditIndex = course.slots && course.slots.length ? 0 : null;
+  setDraftSlots(course.slots || [], { livePreview: false, editIndex: draftSlotEditIndex });
+  setAddSlotInputsFromSlot(course.slots && course.slots[0]);
+  livePreviewSuspended = false;
+  syncRoutineEditorMode();
+  armRoutineDeleteShortcut();
+  openPanel({ focus: false, anchorRect: options.anchorRect });
+  requestAnimationFrame(blurRoutineEditorFocus);
+}
+
+function openDetail(id, options = {}) {
   const c = courses.find(x => x.id === id);
   if (!c) return;
-  activeId = id;
-
-  ensureCourseSlots(c);
-  applyDetailAccent(c.color);
-
-  const titleEl = document.getElementById('d-title');
-  if (titleEl) titleEl.textContent = c.name;
-  if (detailNameInput) detailNameInput.value = c.name;
-  if (detailProfInput) detailProfInput.value = c.prof;
-  if (detailRoomInput) detailRoomInput.value = c.room;
-  if (detailCreditInput) detailCreditInput.value = c.credit;
-  setDetailSlots(c.slots || []);
-  const firstSlot = (c.slots && c.slots[0]) ? c.slots[0] : null;
-  if (detailDaySelect) {
-    detailDaySelect.value = firstSlot ? String(firstSlot.day) : '1';
-    syncCustomPicker(detailDaySelect);
-  }
-  if (detailStartInput) {
-    detailStartInput.value = firstSlot ? firstSlot.start : '';
-    syncCustomPicker(detailStartInput);
-  }
-  if (detailEndInput) {
-    detailEndInput.value = firstSlot ? firstSlot.end : '';
-    syncCustomPicker(detailEndInput);
-  }
-  detailSelectedColor = c.color;
-  setSwatchSelection(detailSwatches, detailSelectedColor);
-
-  document.getElementById('backdrop').classList.add('open');
+  loadRoutineIntoPanel(c, options);
 }
 function closeDetail() {
-  document.getElementById('backdrop').classList.remove('open');
+  const backdrop = document.getElementById('backdrop');
+  if (backdrop) backdrop.classList.remove('open');
   activeId = null;
+  disarmRoutineDeleteShortcut();
+  clearRoutineEditState();
+  syncRoutineEditorMode();
   closeAllCustomPickers();
 }
 function handleBdClick(e) {
@@ -1660,10 +2802,39 @@ function handleBdClick(e) {
 }
 function deleteCourse() {
   if (activeId == null) return;
+  cancelRoutineLivePreviewFrame();
   courses = courses.filter(c => c.id !== activeId);
-  closeDetail();
+  activeId = null;
+  disarmRoutineDeleteShortcut();
+  clearRoutineEditState();
+  syncRoutineEditorMode();
+  clearRoutineFields();
   persistCurrentCourses();
   buildGrid();
+}
+
+async function requestDeleteActiveRoutine() {
+  const current = activeId != null ? courses.find((course) => course.id === activeId) : null;
+  if (!current) return;
+  const ok = await openConfirm({
+    title: 'Delete Routine',
+    message: `Delete "${current.name}"? This cannot be undone.`,
+    okText: 'Delete',
+    cancelText: 'Cancel',
+  });
+  if (!ok) return;
+  deleteCourse();
+}
+
+function shouldIgnoreRoutineDeleteKey(target) {
+  if (promptBackdrop && promptBackdrop.classList.contains('open')) return true;
+  if (controlsPopover && !controlsPopover.hidden) return true;
+  if (appearancePopover && !appearancePopover.hidden) return true;
+  if (routineDeleteShortcutArmed) return false;
+  if (!target || target === document.body || target === document.documentElement) return false;
+  return Boolean(target.closest(
+    'input, textarea, select, button, [contenteditable="true"], .custom-select, .custom-color-popover, .prompt-card, .fab-cluster',
+  ));
 }
 
 function saveDetailCourse() {
@@ -1712,41 +2883,66 @@ function saveDetailCourse() {
 
 // ── Add course ───────────────────────────────────────
 function addCourse() {
-  const name   = document.getElementById('f-name').value.trim();
-  const prof   = document.getElementById('f-prof').value.trim();
-  const room   = document.getElementById('f-room').value.trim();
-  const credit = parseInt(document.getElementById('f-credit').value) || 3;
-
-  if (!name) { document.getElementById('f-name').focus(); return; }
-  let slots = draftSlots.length ? draftSlots : [];
-  if (!slots.length) {
-    const fromInputs = buildSlotsFromAddInputs();
-    if (!fromInputs) return;
-    slots = fromInputs;
-  }
-  slots = normalizeSlots(slots);
-  if (!slots.length) return;
-
-  courses.push({ id: nextId++, name, prof, room, credit, color: selectedColor, slots });
-  persistCurrentCourses();
-  buildGrid();
-
-  // reset
-  document.getElementById('f-name').value = '';
-  document.getElementById('f-prof').value = '';
-  document.getElementById('f-room').value = '';
-  if (startInput) startInput.value = '';
-  if (endInput) endInput.value = '';
-  syncCustomPicker(startInput);
-  syncCustomPicker(endInput);
-  clearSelectedDays();
-  clearDraftSlots();
+  saveRoutineFromPanel();
 }
 
 // ── Color picker ─────────────────────────────────────
 function pickColor(el) {
   selectedColor = el.dataset.color;
   setSwatchSelection(swatches, selectedColor);
+  requestRoutineLivePreview();
+}
+
+function pickCustomColor(value) {
+  const custom = makeCustomColorValue(value);
+  if (!custom) return;
+  selectedColor = custom;
+  setCustomPickerFromHex(value);
+  if (customColorSwatch) customColorSwatch.classList.add('selected');
+  if (swatches) {
+    swatches.querySelectorAll('.swatch[data-color]').forEach((swatch) => {
+      swatch.classList.remove('selected');
+    });
+  }
+  requestRoutineLivePreview();
+}
+
+function setCustomColorPopoverOpen(open) {
+  if (!customColorPopover || !customColorSwatch) return;
+  customColorPopover.hidden = !open;
+  customColorSwatch.setAttribute('aria-expanded', open ? 'true' : 'false');
+  if (open) {
+    setCustomPickerFromHex(getCustomColorHex(selectedColor) || getColorAccent(selectedColor));
+    closeAllCustomPickers();
+  }
+}
+
+function commitCustomPickerColor() {
+  pickCustomColor(getCustomPickerHex());
+}
+
+function updateCustomColorFromFieldPoint(clientX, clientY) {
+  if (!customColorField) return;
+  const rect = customColorField.getBoundingClientRect();
+  customPickerSat = clampUnit((clientX - rect.left) / rect.width);
+  customPickerVal = clampUnit(1 - (clientY - rect.top) / rect.height);
+  syncCustomPickerUi();
+  commitCustomPickerColor();
+}
+
+function onCustomColorFieldMove(e) {
+  if (customColorDragPointerId == null || e.pointerId !== customColorDragPointerId) return;
+  updateCustomColorFromFieldPoint(e.clientX, e.clientY);
+  e.preventDefault();
+}
+
+function endCustomColorFieldDrag(e) {
+  if (customColorDragPointerId == null || e.pointerId !== customColorDragPointerId) return;
+  window.removeEventListener('pointermove', onCustomColorFieldMove);
+  window.removeEventListener('pointerup', endCustomColorFieldDrag);
+  window.removeEventListener('pointercancel', endCustomColorFieldDrag);
+  customColorField?.releasePointerCapture?.(e.pointerId);
+  customColorDragPointerId = null;
 }
 
 function pickHeaderColor(el) {
@@ -1760,20 +2956,142 @@ function pickDetailColor(el) {
 }
 
 // ── UI Events ────────────────────────────────────────
+if (routineSubmitBtn) routineSubmitBtn.addEventListener('click', saveRoutineFromPanel);
+[nameInput, profInput, roomInput, creditInput].forEach((input) => {
+  if (input) input.addEventListener('input', requestRoutineLivePreview);
+});
+[daySelect, startInput, endInput].forEach((input) => {
+  if (input) input.addEventListener('change', updateSelectedDraftSlotFromInputs);
+});
+if (customColorSwatch) {
+  customColorSwatch.addEventListener('click', (e) => {
+    e.stopPropagation();
+    setCustomColorPopoverOpen(customColorPopover ? customColorPopover.hidden : true);
+  });
+}
+if (customColorPopover) {
+  customColorPopover.addEventListener('click', (e) => e.stopPropagation());
+}
+if (customColorField) {
+  customColorField.addEventListener('pointerdown', (e) => {
+    customColorDragPointerId = e.pointerId;
+    customColorField.setPointerCapture?.(e.pointerId);
+    updateCustomColorFromFieldPoint(e.clientX, e.clientY);
+    window.addEventListener('pointermove', onCustomColorFieldMove);
+    window.addEventListener('pointerup', endCustomColorFieldDrag);
+    window.addEventListener('pointercancel', endCustomColorFieldDrag);
+    e.preventDefault();
+  });
+  customColorField.addEventListener('keydown', (e) => {
+    const step = e.shiftKey ? 0.1 : 0.02;
+    if (e.key === 'ArrowLeft') customPickerSat = clampUnit(customPickerSat - step);
+    else if (e.key === 'ArrowRight') customPickerSat = clampUnit(customPickerSat + step);
+    else if (e.key === 'ArrowUp') customPickerVal = clampUnit(customPickerVal + step);
+    else if (e.key === 'ArrowDown') customPickerVal = clampUnit(customPickerVal - step);
+    else return;
+    e.preventDefault();
+    syncCustomPickerUi();
+    commitCustomPickerColor();
+  });
+}
+if (customHueSlider) {
+  customHueSlider.addEventListener('input', () => {
+    customPickerHue = parseInt(customHueSlider.value, 10) || 0;
+    syncCustomPickerUi();
+    commitCustomPickerColor();
+  });
+}
+if (customHexInput) {
+  customHexInput.addEventListener('input', () => {
+    const hex = normalizeHexColor(customHexInput.value);
+    if (!hex) return;
+    pickCustomColor(hex);
+  });
+  customHexInput.addEventListener('blur', () => {
+    customHexInput.value = getCustomPickerHex().toUpperCase();
+  });
+}
+if (deleteRoutineBtn) {
+  deleteRoutineBtn.addEventListener('click', requestDeleteActiveRoutine);
+}
+
 const detailSaveBtn = document.getElementById('d-save');
 if (detailSaveBtn) detailSaveBtn.addEventListener('click', saveDetailCourse);
 
-if (loginBtn) loginBtn.addEventListener('click', handleLogin);
-if (registerBtn) registerBtn.addEventListener('click', handleRegister);
-if (logoutBtn) logoutBtn.addEventListener('click', handleLogout);
 if (saveImageBtn) saveImageBtn.addEventListener('click', exportTimetableImage);
 if (fabSave) fabSave.addEventListener('click', exportTimetableImage);
-
-if (authPwInput) {
-  authPwInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') handleLogin();
+if (exportDataBtn) exportDataBtn.addEventListener('click', exportData);
+if (importDataBtn) {
+  importDataBtn.addEventListener('click', () => {
+    if (importDataInput) importDataInput.click();
   });
 }
+if (importDataInput) {
+  importDataInput.addEventListener('change', async () => {
+    const file = importDataInput.files && importDataInput.files[0];
+    importDataInput.value = '';
+    await importDataFile(file);
+  });
+}
+
+function closeCustomPickersWithin(container) {
+  if (!container) return;
+  customPickers.forEach((picker) => {
+    if (picker.wrapper && container.contains(picker.wrapper)) picker.close();
+  });
+}
+
+function setControlsOpen(open) {
+  if (!controlsToggle || !controlsPopover) return;
+  const wasOpen = !controlsPopover.hidden;
+  if (open && appearancePopover && !appearancePopover.hidden) setAppearanceOpen(false);
+  controlsPopover.hidden = !open;
+  controlsToggle.classList.toggle('is-active', open);
+  controlsToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+  if (!open && wasOpen) closeCustomPickersWithin(controlsPopover);
+}
+
+function setAppearanceOpen(open) {
+  if (!appearanceToggle || !appearancePopover) return;
+  const wasOpen = !appearancePopover.hidden;
+  if (open && controlsPopover && !controlsPopover.hidden) setControlsOpen(false);
+  appearancePopover.hidden = !open;
+  appearanceToggle.classList.toggle('is-active', open);
+  appearanceToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+  if (!open && wasOpen) closeCustomPickersWithin(appearancePopover);
+}
+
+if (controlsToggle) {
+  controlsToggle.addEventListener('click', (e) => {
+    e.stopPropagation();
+    setControlsOpen(controlsPopover ? controlsPopover.hidden : false);
+  });
+}
+if (appearanceToggle) {
+  appearanceToggle.addEventListener('click', (e) => {
+    e.stopPropagation();
+    setAppearanceOpen(appearancePopover ? appearancePopover.hidden : false);
+  });
+}
+[controlsPopover, appearancePopover].forEach((popover) => {
+  if (!popover) return;
+  popover.addEventListener('click', (e) => {
+    e.stopPropagation();
+  });
+});
+document.addEventListener('click', (e) => {
+  if (e.target.closest('.fab-duo')) return;
+  if (customColorPopover && !customColorPopover.hidden) setCustomColorPopoverOpen(false);
+  if (controlsPopover && !controlsPopover.hidden) setControlsOpen(false);
+  if (appearancePopover && !appearancePopover.hidden) setAppearanceOpen(false);
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    if (customColorPopover && !customColorPopover.hidden) setCustomColorPopoverOpen(false);
+    if (controlsPopover && !controlsPopover.hidden) setControlsOpen(false);
+    if (appearancePopover && !appearancePopover.hidden) setAppearanceOpen(false);
+  }
+});
 
 if (semesterSelect) {
   semesterSelect.addEventListener('change', () => {
@@ -1801,9 +3119,9 @@ if (newTableBtn) {
   newTableBtn.addEventListener('click', async () => {
     if (!currentUserId) return;
     const name = await openPrompt({
-      title: 'New Timetable',
-      label: 'Timetable name',
-      value: `New Timetable (${currentSemester})`,
+      title: 'New Schedule',
+      label: 'Schedule name',
+      value: `New Schedule (${SEMESTER_LABELS[currentSemester] || currentSemester})`,
       okText: 'Create',
       cancelText: 'Cancel',
       required: true,
@@ -1818,8 +3136,8 @@ if (copyTableBtn) {
     const base = getCurrentTable();
     if (!base) return;
     const name = await openPrompt({
-      title: 'Copy Timetable',
-      label: 'Timetable name',
+      title: 'Copy Schedule',
+      label: 'Schedule name',
       value: `${base.name} Copy`,
       okText: 'Copy',
       cancelText: 'Cancel',
@@ -1836,8 +3154,8 @@ if (renameTableBtn) {
     const current = getCurrentTable();
     if (!current) return;
     const name = await openPrompt({
-      title: 'Rename Timetable',
-      label: 'Timetable name',
+      title: 'Rename Schedule',
+      label: 'Schedule name',
       value: current.name,
       okText: 'Rename',
       cancelText: 'Cancel',
@@ -1845,6 +3163,21 @@ if (renameTableBtn) {
     });
     if (name == null) return;
     renameTimetable(name.trim());
+  });
+}
+
+if (deleteTableBtn) {
+  deleteTableBtn.addEventListener('click', async () => {
+    const current = getCurrentTable();
+    if (!current) return;
+    const ok = await openConfirm({
+      title: 'Delete Schedule',
+      message: `Delete "${current.name}"? This cannot be undone.`,
+      okText: 'Delete',
+      cancelText: 'Cancel',
+    });
+    if (!ok) return;
+    deleteTimetable();
   });
 }
 
@@ -1859,17 +3192,116 @@ const panelEl = document.querySelector('.side-panel');
 const panelClose = document.getElementById('panelClose');
 const panelBackdrop = document.getElementById('panelBackdrop');
 const fabAdd = document.getElementById('fabAdd');
+const fabCluster = document.querySelector('.fab-cluster');
 const mobileMq = window.matchMedia ? window.matchMedia('(max-width: 980px)') : null;
 let isResizingWidth = false;
 let mobileFitRafId = 0;
 
-function openPanel() {
+function isMobilePanelMode() {
+  return Boolean(mobileMq && mobileMq.matches);
+}
+
+function clampNumber(value, min, max) {
+  return Math.max(min, Math.min(value, max));
+}
+
+function rangesOverlap(aStart, aEnd, bStart, bEnd) {
+  return aStart < bEnd && aEnd > bStart;
+}
+
+function getSlotClientRect(slot) {
+  if (!slot || !timetableEl || !visibleDays.includes(slot.day)) return null;
+  const tableRect = timetableEl.getBoundingClientRect();
+  const firstLabel = timetableEl.querySelector('.time-label');
+  if (!firstLabel) return null;
+  const labelRect = firstLabel.getBoundingClientRect();
+  const timeHeader = timetableEl.querySelector('.day-header');
+  const timeW = timeHeader
+    ? timeHeader.getBoundingClientRect().width
+    : (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--time-w')) || 56);
+  const dayIndex = visibleDays.indexOf(slot.day);
+  const dayCount = visibleDays.length || 1;
+  const colW = (tableRect.width - timeW) / dayCount;
+  const start = Math.max(timeToMins(slot.start), viewStartMins);
+  const end = Math.min(timeToMins(slot.end), viewEndMins);
+  const top = labelRect.top + ((start - viewStartMins) / 60) * ROW_H;
+  const bottom = labelRect.top + ((Math.max(end, start + TIME_STEP) - viewStartMins) / 60) * ROW_H;
+  const left = tableRect.left + timeW + dayIndex * colW;
+  const right = left + colW;
+  return {
+    left,
+    right,
+    top,
+    bottom,
+    width: colW,
+    height: bottom - top,
+  };
+}
+
+function positionPanelForDesktop(options = {}) {
+  if (!panelEl || !layoutEl || isMobilePanelMode()) return;
+  const layoutRect = layoutEl.getBoundingClientRect();
+  const panelWidth = panelEl.getBoundingClientRect().width
+    || parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--panel-w'))
+    || 300;
+  const gap = 12;
+  const anchorRect = options.anchorRect || null;
+
+  let left = layoutRect.width - panelWidth - gap;
+  let top = gap;
+  if (options.preservePosition) {
+    const panelRect = panelEl.getBoundingClientRect();
+    left = panelRect.left - layoutRect.left;
+    top = panelRect.top - layoutRect.top;
+  } else if (anchorRect) {
+    const rightSide = anchorRect.right - layoutRect.left + gap;
+    const leftSide = anchorRect.left - layoutRect.left - panelWidth - gap;
+    left = rightSide + panelWidth <= layoutRect.width - gap ? rightSide : leftSide;
+    top = anchorRect.top - layoutRect.top - 8;
+  }
+
+  left = clampNumber(left, gap, Math.max(gap, layoutRect.width - panelWidth - gap));
+
+  const viewportBottom = window.visualViewport
+    ? window.visualViewport.offsetTop + window.visualViewport.height
+    : window.innerHeight;
+  let bottomLimit = Math.min(layoutRect.bottom, viewportBottom) - layoutRect.top - gap;
+  const fabRect = fabCluster && getComputedStyle(fabCluster).display !== 'none'
+    ? fabCluster.getBoundingClientRect()
+    : null;
+  if (fabRect && fabRect.width > 0 && fabRect.height > 0) {
+    const panelLeft = layoutRect.left + left;
+    const panelRight = panelLeft + panelWidth;
+    if (rangesOverlap(panelLeft, panelRight, fabRect.left - gap, fabRect.right + gap)) {
+      bottomLimit = Math.min(bottomLimit, fabRect.top - layoutRect.top - gap);
+    }
+  }
+
+  const panelMaxHeight = Math.max(1, bottomLimit - gap);
+  const panelHeight = Math.min(panelEl.scrollHeight || 520, panelMaxHeight);
+  top = clampNumber(top, gap, Math.max(gap, bottomLimit - panelHeight));
+  panelEl.style.setProperty('--panel-left', `${left}px`);
+  panelEl.style.setProperty('--panel-top', `${top}px`);
+  panelEl.style.setProperty('--panel-max-h', `${panelMaxHeight}px`);
+}
+
+function refreshOpenPanelPosition() {
+  if (!isPanelOpen() || isMobilePanelMode()) return;
+  positionPanelForDesktop({ preservePosition: true });
+}
+
+function openPanel(options = {}) {
   if (!panelEl) return;
+  positionPanelForDesktop(options);
   panelEl.classList.add('panel-open');
-  if (panelBackdrop) panelBackdrop.classList.add('open');
-  document.body.classList.add('panel-modal-open');
-  const nameInput = document.getElementById('f-name');
-  if (nameInput) nameInput.focus();
+  if (isMobilePanelMode()) {
+    if (panelBackdrop) panelBackdrop.classList.add('open');
+    document.body.classList.add('panel-modal-open');
+  } else {
+    if (panelBackdrop) panelBackdrop.classList.remove('open');
+    document.body.classList.remove('panel-modal-open');
+  }
+  if (options.focus !== false && nameInput) nameInput.focus();
 }
 function closePanel() {
   if (!panelEl) return;
@@ -1878,9 +3310,68 @@ function closePanel() {
   document.body.classList.remove('panel-modal-open');
 }
 
-if (fabAdd) fabAdd.addEventListener('click', openPanel);
-if (panelClose) panelClose.addEventListener('click', closePanel);
-if (panelBackdrop) panelBackdrop.addEventListener('click', closePanel);
+function isPanelOpen() {
+  return Boolean(panelEl && panelEl.classList.contains('panel-open'));
+}
+
+function flushRoutineLivePreview() {
+  if (!livePreviewRaf) return;
+  cancelAnimationFrame(livePreviewRaf);
+  livePreviewRaf = 0;
+  applyRoutineLivePreview();
+}
+
+function dismissRoutineEditor(options = {}) {
+  flushRoutineLivePreview();
+  activeId = null;
+  disarmRoutineDeleteShortcut();
+  livePreviewSuspended = true;
+  clearRoutineEditState();
+  if (options.clearFields !== false) clearRoutineFields();
+  livePreviewSuspended = false;
+  syncRoutineEditorMode();
+  closeAllCustomPickers();
+  closePanel();
+}
+
+function isEmptySpaceForPanelDismiss(target) {
+  if (!target || !isPanelOpen()) return false;
+  if (panelEl && panelEl.contains(target)) return false;
+  if (target.closest(
+    '.course-card, .fab-cluster, .fab-github, .controls-popover, .appearance-popover, .prompt-card, .detail-card',
+  )) return false;
+  return Boolean(target.closest(
+    '.grid-cell, .time-label, .day-header, .timetable, .timetable-wrap, .timetable-shell, .layout',
+  ) || target === document.body || target === document.documentElement);
+}
+
+function isRoutineEditorInteractionTarget(target) {
+  if (!target || !panelEl || !panelEl.contains(target)) return false;
+  return Boolean(target.closest(
+    'input, textarea, select, button, .custom-select, .slot-item, .info-toggle, .swatch, .custom-color-popover',
+  ));
+}
+
+document.addEventListener('pointerdown', (e) => {
+  if (e.pointerType === 'mouse' && e.button !== 0) return;
+  if (routineDeleteShortcutArmed && isRoutineEditorInteractionTarget(e.target)) {
+    disarmRoutineDeleteShortcut();
+  }
+  if (!isDraggingSlot && !cardDrag && isEmptySpaceForPanelDismiss(e.target)) {
+    dismissRoutineEditor();
+  }
+}, true);
+
+document.addEventListener('focusin', (e) => {
+  if (routineDeleteShortcutArmed && isRoutineEditorInteractionTarget(e.target)) {
+    disarmRoutineDeleteShortcut();
+  }
+});
+
+if (fabAdd) fabAdd.addEventListener('click', () => startNewRoutine({ clear: true }));
+if (panelClose) panelClose.addEventListener('click', () => dismissRoutineEditor());
+if (panelBackdrop) panelBackdrop.addEventListener('click', () => dismissRoutineEditor());
+syncRoutineEditorMode();
 
 function resetMobileTimetableScale() {
   if (!timetableWrap || !timetableScale) return;
@@ -1937,9 +3428,7 @@ function clampTimetableWidth(width) {
   if (!layoutEl || !timetableShell || !resizer) return;
   const layoutRect = layoutEl.getBoundingClientRect();
   const resizerRect = resizer.getBoundingClientRect();
-  const panelWidth = panelEl ? panelEl.getBoundingClientRect().width : 0;
-  const panelGap = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--panel-gap')) || 0;
-  const maxWidth = Math.max(0, layoutRect.width - panelWidth - panelGap - resizerRect.width);
+  const maxWidth = Math.max(0, layoutRect.width - resizerRect.width);
   const effectiveMin = Math.min(MIN_TIMETABLE_W, maxWidth);
   const clamped = Math.max(effectiveMin, Math.min(width, maxWidth));
   timetableShell.style.flex = '0 0 auto';
@@ -1986,6 +3475,7 @@ window.addEventListener('resize', () => {
     const current = parseFloat(timetableShell.style.width);
     if (Number.isFinite(current)) clampTimetableWidth(current);
   }
+  refreshOpenPanelPosition();
   scheduleFitTimetableForMobile();
 });
 
@@ -2012,36 +3502,38 @@ const timetableFitObserver = typeof ResizeObserver === 'undefined'
 if (timetableFitObserver && timetableWrap) timetableFitObserver.observe(timetableWrap);
 if (timetableFitObserver && timetableEl) timetableFitObserver.observe(timetableEl);
 if (window.visualViewport) {
-  window.visualViewport.addEventListener('resize', scheduleFitTimetableForMobile);
+  window.visualViewport.addEventListener('resize', () => {
+    refreshOpenPanelPosition();
+    scheduleFitTimetableForMobile();
+  });
 }
 
 function initApp() {
-  setUserUI(null);
+  currentUserId = LOCAL_USER;
+  migrateLegacyData();
+  ensureUserData(currentUserId);
+  loadViewSettings();
   populateSemesterSelect();
-  const sessionUser = getSessionUser();
-  const users = getUsers();
-  if (sessionUser && users[sessionUser]) {
-    currentUserId = sessionUser;
-    setUserUI(sessionUser);
-    hideAuth();
-    loadCurrentTimetable();
-  } else {
-    clearSessionUser();
-    showAuth();
-    buildGrid();
-  }
+  loadCurrentTimetable();
 }
 
 // ── Keyboard ─────────────────────────────────────────
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
+    if (customColorPopover && !customColorPopover.hidden) setCustomColorPopoverOpen(false);
     closeDetail();
     closeAllCustomPickers();
     closePrompt(null);
+    return;
   }
-});
+  if ((e.key === 'Delete' || e.key === 'Backspace') && activeId != null && !shouldIgnoreRoutineDeleteKey(e.target)) {
+    e.preventDefault();
+    requestDeleteActiveRoutine();
+  }
+}, true);
 
 // ── Init ─────────────────────────────────────────────
+loadTheme();
 loadHeaderColor();
 initApp();
 scheduleFitTimetableForMobile();

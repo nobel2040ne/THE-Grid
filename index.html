@@ -10,6 +10,13 @@
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
 <link rel="stylesheet" href="style.css"/>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer"/>
+<script>
+  try {
+    if (localStorage.getItem('tt_theme_v1') === 'dark') {
+      document.documentElement.dataset.theme = 'dark';
+    }
+  } catch {}
+</script>
 
 </head>
 <body>
@@ -20,82 +27,60 @@
     <div class="timetable-wrap" id="timetableWrap">
       <div class="timetable-scale" id="timetableScale">
         <div class="timetable" id="timetable">
-        <!-- headers -->
-        <div class="day-header">TIME</div>
-        <div class="day-header" lang="en">MON</div>
-        <div class="day-header" lang="en">TUE</div>
-        <div class="day-header" lang="en">WED</div>
-        <div class="day-header" lang="en">THU</div>
-        <div class="day-header" lang="en">FRI</div>
-        <!-- rows injected by JS -->
+        <!-- grid injected by JS -->
         </div>
       </div>
     </div>
   </div>
 
-  <div class="resizer" id="resizer" role="separator" aria-orientation="vertical" aria-label="시간표 너비 조절"></div>
+  <div class="resizer" id="resizer" role="separator" aria-orientation="vertical" aria-label="weekly schedule width resize"></div>
 
   <!-- SIDE PANEL -->
   <aside class="side-panel">
     <div class="panel-header">
-      <div class="panel-title">Add Course</div>
-      <button class="panel-close" id="panelClose" type="button" aria-label="닫기">
-        <svg viewBox="0 0 12 12" aria-hidden="true"><line x1="2" y1="2" x2="10" y2="10"/><line x1="10" y1="2" x2="2" y2="10"/></svg>
-      </button>
+      <div class="panel-title" id="panelTitle">Add Routine</div>
+      <div class="panel-tools">
+        <button class="panel-close" id="panelClose" type="button" aria-label="닫기">
+          <svg viewBox="0 0 12 12" aria-hidden="true"><line x1="2" y1="2" x2="10" y2="10"/><line x1="10" y1="2" x2="2" y2="10"/></svg>
+        </button>
+      </div>
     </div>
 
     <div class="panel-body">
-      <div class="panel-meta">
-        <div>
-          <div class="panel-meta-label">User</div>
-          <div class="panel-meta-value" id="panelUser">-</div>
-        </div>
-        <button class="btn-ghost" id="logoutBtn" type="button">LOG OUT</button>
-      </div>
-
-      <div class="panel-divider"></div>
-
-      <div class="field-group">
-        <label class="field-label">Semester</label>
-        <div class="custom-select" data-placeholder="Select semester">
-          <select class="native-select" id="semesterSelect"></select>
-          <button class="custom-select-trigger" type="button" aria-haspopup="listbox" aria-expanded="false"></button>
-          <div class="custom-select-menu" role="listbox"></div>
-        </div>
-      </div>
-
-      <div class="field-group">
-        <label class="field-label">Timetable</label>
-        <div class="custom-select" data-placeholder="Select timetable">
-          <select class="native-select" id="timetableSelect"></select>
-          <button class="custom-select-trigger" type="button" aria-haspopup="listbox" aria-expanded="false"></button>
-          <div class="custom-select-menu" role="listbox"></div>
-        </div>
-      </div>
-
-      <div class="panel-actions">
-        <button class="btn-secondary" id="newTable" type="button">NEW</button>
-        <button class="btn-secondary" id="copyTable" type="button">COPY</button>
-        <button class="btn-secondary" id="renameTable" type="button">RENAME</button>
-      </div>
-      <div class="panel-divider"></div>
-
       <div class="field-group">
         <label class="field-label">Name</label>
         <input class="field-input" id="f-name" type="text"/>
       </div>
       <div class="field-group">
-        <label class="field-label">Professor</label>
-        <input class="field-input" id="f-prof" type="text"/>
+        <label class="field-label" for="f-prof">Note</label>
+        <div class="field-control-row">
+          <input class="field-input" id="f-prof" type="text"/>
+          <label class="info-toggle" aria-label="Show note on routine card" title="Show on card">
+            <input type="checkbox" id="toggleProf" data-info="prof" checked/>
+            <span aria-hidden="true"></span>
+          </label>
+        </div>
       </div>
       <div class="field-group">
-        <label class="field-label">Room</label>
-        <input class="field-input" id="f-room" type="text"/>
+        <label class="field-label" for="f-room">Place</label>
+        <div class="field-control-row">
+          <input class="field-input" id="f-room" type="text"/>
+          <label class="info-toggle" aria-label="Show place on routine card" title="Show on card">
+            <input type="checkbox" id="toggleRoom" data-info="room" checked/>
+            <span aria-hidden="true"></span>
+          </label>
+        </div>
       </div>
 
       <div class="field-group">
-        <label class="field-label">Credit</label>
-        <input class="field-input" id="f-credit" type="number" min="1" max="6" style="text-align:center"/>
+        <label class="field-label" for="f-credit">Priority</label>
+        <div class="field-control-row">
+          <input class="field-input" id="f-credit" type="number" min="1" max="6" style="text-align:center"/>
+          <label class="info-toggle" aria-label="Show priority on routine card" title="Show on card">
+            <input type="checkbox" id="toggleCredit" data-info="credit"/>
+            <span aria-hidden="true"></span>
+          </label>
+        </div>
       </div>
 
       <div class="field-group">
@@ -111,6 +96,8 @@
                   <option value="3">Wednesday</option>
                   <option value="4">Thursday</option>
                   <option value="5">Friday</option>
+                  <option value="6">Saturday</option>
+                  <option value="7">Sunday</option>
                 </select>
                 <button class="custom-select-trigger" type="button" aria-haspopup="listbox" aria-expanded="false"></button>
                 <div class="custom-select-menu" role="listbox"></div>
@@ -129,12 +116,9 @@
                 </div>
               </div>
             </div>
-            <button class="slot-add-btn" id="addSlotBtn" type="button" aria-label="Add time">+</button>
+            <button class="slot-add-btn" id="addSlotBtn" type="button" aria-label="Add time block">+</button>
           </div>
           <div class="slot-items" id="slotItems"></div>
-        </div>
-        <div class="slot-actions">
-          <button class="btn-ghost" id="clearSlotsBtn" type="button">CLEAR</button>
         </div>
       </div>
 
@@ -161,82 +145,26 @@
           <div class="swatch sw-fog"            data-color="c-fog" onclick="pickColor(this)" title="Fog"></div>
           <div class="swatch sw-pearl"          data-color="c-pearl" onclick="pickColor(this)" title="Pearl"></div>
           <div class="swatch sw-smoke"          data-color="c-smoke" onclick="pickColor(this)" title="Smoke"></div>
+          <div class="custom-color-wrap">
+            <button class="swatch custom-color-swatch" id="customColorSwatch" type="button" title="Custom color" aria-label="Custom color" aria-haspopup="dialog" aria-expanded="false" aria-controls="customColorPopover">
+              <i class="fa-solid fa-plus" aria-hidden="true"></i>
+            </button>
+          </div>
+        </div>
+        <div class="custom-color-popover" id="customColorPopover" role="dialog" aria-label="Custom color" hidden>
+          <div class="custom-color-field" id="customColorField" role="slider" tabindex="0" aria-label="Color tone" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100">
+            <span class="custom-color-thumb" id="customColorThumb" aria-hidden="true"></span>
+          </div>
+          <input class="custom-hue-slider" id="customHueSlider" type="range" min="0" max="360" value="210" aria-label="Hue"/>
+          <div class="custom-color-row">
+            <span class="custom-color-preview" id="customColorPreview" aria-hidden="true"></span>
+            <input class="custom-hex-input" id="customHexInput" type="text" value="#205ea6" maxlength="7" spellcheck="false" aria-label="Hex color"/>
+          </div>
         </div>
       </div>
 
-      <div class="panel-divider"></div>
-
-      <div class="field-group">
-        <label class="field-label">Header</label>
-        <div class="color-swatches" id="headerSwatches">
-          <div class="swatch sw-navy selected" data-color="c-navy" onclick="pickHeaderColor(this)"></div>
-          <div class="swatch sw-moss" data-color="c-moss" onclick="pickHeaderColor(this)"></div>
-          <div class="swatch sw-wine" data-color="c-wine" onclick="pickHeaderColor(this)"></div>
-          <div class="swatch sw-slate" data-color="c-slate" onclick="pickHeaderColor(this)"></div>
-          <div class="swatch sw-umber" data-color="c-umber" onclick="pickHeaderColor(this)"></div>
-          <div class="swatch sw-teal" data-color="c-teal" onclick="pickHeaderColor(this)"></div>
-          <div class="swatch sw-flex-red" data-color="c-flex-red" onclick="pickHeaderColor(this)" title="Flexoki Red"></div>
-          <div class="swatch sw-flex-orange" data-color="c-flex-orange" onclick="pickHeaderColor(this)" title="Flexoki Orange"></div>
-          <div class="swatch sw-flex-yellow" data-color="c-flex-yellow" onclick="pickHeaderColor(this)" title="Flexoki Yellow"></div>
-          <div class="swatch sw-flex-green" data-color="c-flex-green" onclick="pickHeaderColor(this)" title="Flexoki Green"></div>
-          <div class="swatch sw-flex-cyan" data-color="c-flex-cyan" onclick="pickHeaderColor(this)" title="Flexoki Cyan"></div>
-          <div class="swatch sw-flex-blue" data-color="c-flex-blue" onclick="pickHeaderColor(this)" title="Flexoki Blue"></div>
-          <div class="swatch sw-flex-purple" data-color="c-flex-purple" onclick="pickHeaderColor(this)" title="Flexoki Purple"></div>
-          <div class="swatch sw-flex-magenta" data-color="c-flex-magenta" onclick="pickHeaderColor(this)" title="Flexoki Magenta"></div>
-          <div class="swatch sw-graphite" data-color="c-graphite" onclick="pickHeaderColor(this)" title="Graphite"></div>
-          <div class="swatch sw-steel" data-color="c-steel" onclick="pickHeaderColor(this)" title="Steel"></div>
-          <div class="swatch sw-ash" data-color="c-ash" onclick="pickHeaderColor(this)" title="Ash"></div>
-          <div class="swatch sw-fog" data-color="c-fog" onclick="pickHeaderColor(this)" title="Fog"></div>
-          <div class="swatch sw-pearl" data-color="c-pearl" onclick="pickHeaderColor(this)" title="Pearl"></div>
-          <div class="swatch sw-smoke" data-color="c-smoke" onclick="pickHeaderColor(this)" title="Smoke"></div>
-        </div>
-      </div>
-
-      <div class="field-group">
-        <label class="field-label">Palette</label>
-        <div class="custom-select" data-placeholder="Select palette">
-          <select class="native-select" id="paletteSelect">
-            <option value="" selected disabled>Select palette</option>
-            <option value="snu">SNU</option>
-            <option value="flexoki">Flexoki</option>
-            <option value="warm">Warm</option>
-            <option value="cool">Cool</option>
-            <option value="earth">Earth</option>
-            <option value="dawn">Dawn</option>
-            <option value="vivid">Vivid</option>
-            <option value="muted">Muted</option>
-            <option value="gray">Gray</option>
-            <option value="stone">Stone</option>
-            <option value="breeze">Breeze</option>
-          </select>
-          <button class="custom-select-trigger" type="button" aria-haspopup="listbox" aria-expanded="false"></button>
-          <div class="custom-select-menu" role="listbox"></div>
-        </div>
-      </div>
-
-      <div class="field-group">
-        <label class="field-label">Card Info</label>
-        <div class="toggle-list" id="cardInfoToggles">
-          <label class="toggle">
-            <input type="checkbox" id="toggleProf" data-info="prof" checked/>
-            <span class="toggle-ui"></span>
-            <span class="toggle-label">Professor</span>
-          </label>
-          <label class="toggle">
-            <input type="checkbox" id="toggleRoom" data-info="room" checked/>
-            <span class="toggle-ui"></span>
-            <span class="toggle-label">Room</span>
-          </label>
-          <label class="toggle">
-            <input type="checkbox" id="toggleCredit" data-info="credit"/>
-            <span class="toggle-ui"></span>
-            <span class="toggle-label">Credit</span>
-          </label>
-        </div>
-        <div class="toggle-help" id="toggleHelp">Max 2 Items</div>
-      </div>
-
-      <button class="btn-add" onclick="addCourse()">ADD</button>
+      <button class="btn-add" id="routineSubmitBtn" type="button">ADD ROUTINE</button>
+      <button class="btn-add btn-delete-main" id="deleteRoutineBtn" type="button" hidden>DELETE</button>
     </div>
   </aside>
 </div>
@@ -247,39 +175,155 @@
   </svg>
 </a>
 
-<div class="fab-duo" role="group" aria-label="Quick actions">
-  <button class="fab-save" id="fabSave" type="button" aria-label="시간표 이미지 저장">
-    <i class="fa-solid fa-camera-retro" aria-hidden="true"></i>
-  </button>
-  <span class="fab-divider" aria-hidden="true"></span>
-  <button class="fab-add" id="fabAdd" type="button" aria-label="강좌 추가">
-    <svg viewBox="0 0 12 12" aria-hidden="true"><line x1="6" y1="2" x2="6" y2="10"/><line x1="2" y1="6" x2="10" y2="6"/></svg>
-  </button>
-</div>
-<div class="panel-backdrop" id="panelBackdrop" aria-hidden="true"></div>
+<div class="fab-cluster">
+  <div class="fab-data-pill" role="group" aria-label="Data actions">
+    <button class="fab-export" id="exportDataBtn" type="button" aria-label="export data" title="Export data">
+      <i class="fa-solid fa-arrow-up" aria-hidden="true"></i>
+    </button>
+    <button class="fab-import" id="importDataBtn" type="button" aria-label="import data" title="Import data">
+      <i class="fa-solid fa-arrow-down" aria-hidden="true"></i>
+    </button>
+    <input class="data-import-input" id="importDataInput" type="file" accept="application/json,.json" hidden/>
+  </div>
 
-<!-- AUTH MODAL -->
-<div class="auth-backdrop" id="authBackdrop" aria-hidden="true">
-  <div class="auth-card" role="dialog" aria-modal="true" aria-label="Login">
-    <div class="auth-header">Log In</div>
-    <div class="auth-body">
-      <div class="field-group">
-        <label class="field-label">User ID</label>
-        <input class="field-input" id="authId" type="text" autocomplete="username"/>
+  <div class="fab-duo" role="group" aria-label="Quick actions">
+    <button class="fab-save" id="fabSave" type="button" aria-label="save weekly schedule image">
+      <i class="fa-solid fa-camera-retro" aria-hidden="true"></i>
+    </button>
+    <span class="fab-divider" aria-hidden="true"></span>
+    <button class="fab-controls" id="controlsToggle" type="button" aria-label="schedule controls" aria-haspopup="dialog" aria-expanded="false">
+      <i class="fa-solid fa-sliders" aria-hidden="true"></i>
+    </button>
+    <span class="fab-divider" aria-hidden="true"></span>
+    <button class="fab-appearance" id="appearanceToggle" type="button" aria-label="appearance settings" aria-haspopup="dialog" aria-expanded="false">
+      <i class="fa-solid fa-palette" aria-hidden="true"></i>
+    </button>
+    <span class="fab-divider fab-add-divider" aria-hidden="true"></span>
+    <button class="fab-add" id="fabAdd" type="button" aria-label="add routine">
+      <svg viewBox="0 0 12 12" aria-hidden="true"><line x1="6" y1="2" x2="6" y2="10"/><line x1="2" y1="6" x2="10" y2="6"/></svg>
+    </button>
+
+  <div class="controls-popover" id="controlsPopover" role="dialog" aria-label="Schedule controls" hidden>
+    <div class="appearance-title">Schedule Controls</div>
+
+    <div class="appearance-section">
+      <div class="appearance-label">Collection</div>
+      <div class="custom-select" data-placeholder="Select collection">
+        <select class="native-select" id="semesterSelect"></select>
+        <button class="custom-select-trigger" type="button" aria-haspopup="listbox" aria-expanded="false"></button>
+        <div class="custom-select-menu" role="listbox"></div>
       </div>
-      <div class="field-group">
-        <label class="field-label">Password</label>
-        <input class="field-input" id="authPw" type="password" autocomplete="current-password"/>
+    </div>
+
+    <div class="appearance-section">
+      <div class="appearance-label">Schedule</div>
+      <div class="custom-select" data-placeholder="Select schedule">
+        <select class="native-select" id="timetableSelect"></select>
+        <button class="custom-select-trigger" type="button" aria-haspopup="listbox" aria-expanded="false"></button>
+        <div class="custom-select-menu" role="listbox"></div>
       </div>
-      <div class="auth-actions">
-        <button class="btn-add" id="loginBtn" type="button">LOG IN</button>
-        <button class="btn-secondary" id="registerBtn" type="button">REGISTER</button>
+      <div class="panel-actions appearance-actions">
+        <button class="btn-secondary" id="newTable" type="button">NEW</button>
+        <button class="btn-secondary" id="copyTable" type="button">COPY</button>
+        <button class="btn-secondary" id="renameTable" type="button">RENAME</button>
+        <button class="btn-secondary btn-danger" id="deleteTable" type="button">DELETE</button>
       </div>
-      <div class="auth-hint">Your ID and password are stored only in this browser.</div>
-      <div class="auth-status" id="authStatus"></div>
+    </div>
+
+    <div class="appearance-section">
+      <div class="appearance-label">View</div>
+      <div class="view-controls">
+        <div class="slot-time-inputs">
+          <div class="custom-select menu-up" data-placeholder="Start">
+            <input class="native-time" id="viewStart" type="time"/>
+            <button class="custom-select-trigger" type="button" aria-haspopup="listbox" aria-expanded="false"></button>
+            <div class="custom-select-menu" role="listbox"></div>
+          </div>
+          <span class="slot-time-sep">–</span>
+          <div class="custom-select menu-up" data-placeholder="End">
+            <input class="native-time" id="viewEnd" type="time"/>
+            <button class="custom-select-trigger" type="button" aria-haspopup="listbox" aria-expanded="false"></button>
+            <div class="custom-select-menu" role="listbox"></div>
+          </div>
+        </div>
+        <div class="day-toggle-group view-day-group" id="viewDayToggles" aria-label="Visible days">
+          <label class="day-toggle" aria-label="Monday"><input type="checkbox" value="1" checked/><span>Mon</span></label>
+          <label class="day-toggle" aria-label="Tuesday"><input type="checkbox" value="2" checked/><span>Tue</span></label>
+          <label class="day-toggle" aria-label="Wednesday"><input type="checkbox" value="3" checked/><span>Wed</span></label>
+          <label class="day-toggle" aria-label="Thursday"><input type="checkbox" value="4" checked/><span>Thu</span></label>
+          <label class="day-toggle" aria-label="Friday"><input type="checkbox" value="5" checked/><span>Fri</span></label>
+          <label class="day-toggle" aria-label="Saturday"><input type="checkbox" value="6"/><span>Sat</span></label>
+          <label class="day-toggle" aria-label="Sunday"><input type="checkbox" value="7"/><span>Sun</span></label>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="appearance-popover" id="appearancePopover" role="dialog" aria-label="Appearance settings" hidden>
+    <div class="appearance-title">Appearance</div>
+
+    <div class="appearance-section">
+      <div class="appearance-label">Theme</div>
+      <label class="theme-toggle">
+        <input id="themeToggle" type="checkbox"/>
+        <span class="theme-toggle-ui" aria-hidden="true">
+          <i class="fa-solid fa-moon"></i>
+        </span>
+        <span class="theme-toggle-text">Dark mode</span>
+      </label>
+    </div>
+
+    <div class="appearance-section">
+      <div class="appearance-label">Header</div>
+      <div class="color-swatches appearance-swatches" id="headerSwatches">
+        <div class="swatch sw-navy selected" data-color="c-navy" onclick="pickHeaderColor(this)"></div>
+        <div class="swatch sw-moss" data-color="c-moss" onclick="pickHeaderColor(this)"></div>
+        <div class="swatch sw-wine" data-color="c-wine" onclick="pickHeaderColor(this)"></div>
+        <div class="swatch sw-slate" data-color="c-slate" onclick="pickHeaderColor(this)"></div>
+        <div class="swatch sw-umber" data-color="c-umber" onclick="pickHeaderColor(this)"></div>
+        <div class="swatch sw-teal" data-color="c-teal" onclick="pickHeaderColor(this)"></div>
+        <div class="swatch sw-flex-red" data-color="c-flex-red" onclick="pickHeaderColor(this)" title="Flexoki Red"></div>
+        <div class="swatch sw-flex-orange" data-color="c-flex-orange" onclick="pickHeaderColor(this)" title="Flexoki Orange"></div>
+        <div class="swatch sw-flex-yellow" data-color="c-flex-yellow" onclick="pickHeaderColor(this)" title="Flexoki Yellow"></div>
+        <div class="swatch sw-flex-green" data-color="c-flex-green" onclick="pickHeaderColor(this)" title="Flexoki Green"></div>
+        <div class="swatch sw-flex-cyan" data-color="c-flex-cyan" onclick="pickHeaderColor(this)" title="Flexoki Cyan"></div>
+        <div class="swatch sw-flex-blue" data-color="c-flex-blue" onclick="pickHeaderColor(this)" title="Flexoki Blue"></div>
+        <div class="swatch sw-flex-purple" data-color="c-flex-purple" onclick="pickHeaderColor(this)" title="Flexoki Purple"></div>
+        <div class="swatch sw-flex-magenta" data-color="c-flex-magenta" onclick="pickHeaderColor(this)" title="Flexoki Magenta"></div>
+        <div class="swatch sw-graphite" data-color="c-graphite" onclick="pickHeaderColor(this)" title="Graphite"></div>
+        <div class="swatch sw-steel" data-color="c-steel" onclick="pickHeaderColor(this)" title="Steel"></div>
+        <div class="swatch sw-ash" data-color="c-ash" onclick="pickHeaderColor(this)" title="Ash"></div>
+        <div class="swatch sw-fog" data-color="c-fog" onclick="pickHeaderColor(this)" title="Fog"></div>
+        <div class="swatch sw-pearl" data-color="c-pearl" onclick="pickHeaderColor(this)" title="Pearl"></div>
+        <div class="swatch sw-smoke" data-color="c-smoke" onclick="pickHeaderColor(this)" title="Smoke"></div>
+      </div>
+    </div>
+
+    <div class="appearance-section">
+      <div class="appearance-label">Palette</div>
+      <div class="custom-select menu-up" data-placeholder="Select palette">
+        <select class="native-select" id="paletteSelect">
+          <option value="" selected disabled>Select palette</option>
+          <option value="snu">SNU</option>
+          <option value="flexoki">Flexoki</option>
+          <option value="warm">Warm</option>
+          <option value="cool">Cool</option>
+          <option value="earth">Earth</option>
+          <option value="dawn">Dawn</option>
+          <option value="vivid">Vivid</option>
+          <option value="muted">Muted</option>
+          <option value="gray">Gray</option>
+          <option value="stone">Stone</option>
+          <option value="breeze">Breeze</option>
+        </select>
+        <button class="custom-select-trigger" type="button" aria-haspopup="listbox" aria-expanded="false"></button>
+        <div class="custom-select-menu" role="listbox"></div>
+      </div>
     </div>
   </div>
 </div>
+</div>
+<div class="panel-backdrop" id="panelBackdrop" aria-hidden="true"></div>
 
 <!-- DETAIL MODAL -->
 <div class="backdrop" id="backdrop" onclick="handleBdClick(event)">
@@ -298,13 +342,13 @@
         </div>
       </div>
       <div class="detail-row">
-        <div class="detail-row-label">Professor</div>
+        <div class="detail-row-label">Note</div>
         <div class="detail-row-value">
           <input class="detail-input" id="d-prof" type="text"/>
         </div>
       </div>
       <div class="detail-row">
-        <div class="detail-row-label">Room</div>
+        <div class="detail-row-label">Place</div>
         <div class="detail-row-value">
           <input class="detail-input" id="d-room" type="text"/>
         </div>
@@ -322,6 +366,8 @@
                     <option value="3">Wednesday</option>
                     <option value="4">Thursday</option>
                     <option value="5">Friday</option>
+                    <option value="6">Saturday</option>
+                    <option value="7">Sunday</option>
                   </select>
                   <button class="custom-select-trigger" type="button" aria-haspopup="listbox" aria-expanded="false"></button>
                   <div class="custom-select-menu" role="listbox"></div>
@@ -344,13 +390,10 @@
             </div>
             <div class="slot-items" id="detailSlotItems"></div>
           </div>
-          <div class="slot-actions detail-slot-actions">
-            <button class="btn-ghost" id="detailClearSlots" type="button">CLEAR</button>
-          </div>
         </div>
       </div>
       <div class="detail-row">
-        <div class="detail-row-label">Credit</div>
+        <div class="detail-row-label">Priority</div>
         <div class="detail-row-value">
           <input class="detail-input" id="d-credit" type="number" min="1" max="6"/>
         </div>
