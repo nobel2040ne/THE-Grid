@@ -59,6 +59,8 @@
 }
 
 :root {
+  /* shared schedule row height (list items, editor row, "+" row) */
+  --slot-row-h: 30px;
   /* SNU brand colors */
   --snu-blue:   rgb(15, 15, 112);
   --snu-beige:  rgb(220, 218, 178);
@@ -533,29 +535,17 @@ body.selecting-slot {
   transform: scale(1);
 }
 
-.panel-header {
-  padding: 22px 24px 18px;
-  border-bottom: 1px solid rgba(102,102,102,0.16);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-.panel-title {
-  font-family: var(--font-sans);
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--navy);
-  letter-spacing: -0.02em;
-}
-
-.panel-tools {
+.panel-top-actions {
+  position: absolute;
+  top: 13px;
+  right: 13px;
+  z-index: 10;
   display: flex;
   align-items: center;
   gap: 6px;
 }
 .panel-close {
-  display: inline-flex;
+  display: none;
   width: 28px;
   height: 28px;
   border-radius: 50%;
@@ -568,18 +558,99 @@ body.selecting-slot {
 }
 .panel-close:hover { background: var(--bg-warm); }
 .panel-close:active { transform: scale(0.96); }
-.panel-close {
-  display: none;
-}
 .panel-close svg { width: 10px; height: 10px; stroke: var(--text-muted); stroke-width: 2; stroke-linecap: round; fill: none; }
 
+.panel-delete {
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--bg);
+  border: 1px solid rgba(102,102,102,0.2);
+  color: var(--text-muted);
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s, border-color 0.15s, transform 0.1s;
+}
+.panel-delete[hidden] { display: none; }
+.panel-delete svg { width: 15px; height: 15px; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; fill: none; }
+.panel-delete:hover {
+  background: rgba(175,48,41,0.1);
+  border-color: rgba(175,48,41,0.28);
+  color: var(--flex-red, #af3029);
+}
+.panel-delete:active { transform: scale(0.96); }
+
 .panel-body {
-  padding: 20px 24px;
+  padding: 20px 22px 22px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
   flex: 1;
   min-height: 0;
+}
+
+/* Borderless title, like Apple Calendar / Notion event editors. */
+.routine-title {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  padding: 2px 2px 6px;
+  font-family: var(--font-sans);
+  font-size: 21px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--navy);
+  outline: none;
+}
+.routine-title::placeholder { color: var(--text-faint); font-weight: 700; }
+
+/* Compact inline meta rows (Note / Place / Priority) with hairline dividers. */
+.meta-list {
+  display: flex;
+  flex-direction: column;
+}
+.meta-row {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr) 24px;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  border-top: 1px solid rgba(102,102,102,0.12);
+}
+.meta-row:last-child { border-bottom: 1px solid rgba(102,102,102,0.12); }
+.meta-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
+}
+.meta-input {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  padding: 6px 2px;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  color: var(--text-body);
+  outline: none;
+}
+.meta-input::placeholder { color: var(--text-faint); }
+.meta-input-num {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+.meta-input-num::-webkit-outer-spin-button,
+.meta-input-num::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.meta-row .info-toggle {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  justify-self: end;
 }
 
 .field-group { display: flex; flex-direction: column; gap: 5px; }
@@ -663,7 +734,7 @@ body.selecting-slot {
 .slot-list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 6px;
   padding: 0;
   border: 0;
   border-radius: 0;
@@ -681,6 +752,13 @@ body.selecting-slot {
 }
 .view-controls .slot-time-inputs {
   padding: 0;
+}
+.view-controls .slot-time-inputs .custom-select-trigger {
+  padding-right: 8px;
+  text-align: center;
+}
+.view-controls .slot-time-inputs .custom-select-trigger::after {
+  content: none;
 }
 .day-toggle-group.view-day-group {
   display: grid;
@@ -731,78 +809,173 @@ body.selecting-slot {
   content: none;
   margin: 0;
 }
-.slot-editor {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 42px;
-  align-items: stretch;
-  gap: 10px;
-  padding: 10px;
-  border-radius: 8px;
-  border: 1px solid rgba(102,102,102,0.16);
-  background:
-    linear-gradient(145deg, rgba(255,255,255,0.8), rgba(255,255,255,0.52)),
-    rgba(246,244,239,0.55);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.62);
-}
+.slot-editor[hidden],
+.slot-add-row[hidden] { display: none; }
+
 .slot-items {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin-top: 0;
+  gap: 2px;
   min-height: 0;
 }
-.slot-items:empty {
-  display: none;
-  margin-top: 0;
-}
-.slot-inputs {
+.slot-items:empty { display: none; }
+
+/* Side-panel inline editor: one row, the same height/font as a committed block. */
+.slot-editor {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
-  flex: 1;
-  min-width: 0;
+  align-items: center;
+  gap: 7px;
+  margin-top: 2px;
+  padding: 1px 6px 1px 7px;
+  height: var(--slot-row-h);
+  min-height: var(--slot-row-h);
+  max-height: var(--slot-row-h);
+  border-radius: 7px;
+  border: 1px solid rgba(15,15,112,0.22);
+  background:
+    linear-gradient(145deg, rgba(255,255,255,0.92), rgba(255,255,255,0.66)),
+    rgba(246,244,239,0.5);
+  box-shadow: 0 1px 3px rgba(15,15,112,0.07);
+  font-size: 12px;
 }
+.slot-editor .slot-icon { flex-shrink: 0; color: var(--navy); }
+.slot-day-select { flex: 1 1 auto; min-width: 0; }
 .slot-time-inputs {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 3px;
+  flex: 0 0 auto;
 }
-.slot-time-inputs .custom-select {
-  min-width: 0;
-  flex: 1;
-}
+.slot-time-inputs .custom-select { flex: 0 0 auto; width: 56px; }
 .slot-editor .custom-select-trigger {
-  min-height: 38px;
+  height: 26px;
+  min-height: 26px;
+  padding: 4px 8px;
+  font-size: 12px;
 }
-.slot-editor .custom-select {
-  z-index: 1;
+.slot-editor .slot-day-select .custom-select-trigger {
+  padding-right: 24px;
+  font-size: 9.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--navy);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.slot-editor .custom-select.open {
-  z-index: 60;
+.slot-editor .slot-day-select .custom-select-trigger.is-placeholder {
+  font-weight: 500;
+  letter-spacing: 0;
+  color: var(--text-faint);
 }
+.slot-editor .custom-select { z-index: 1; }
+.slot-editor .custom-select.open { z-index: 60; }
 .slot-editor .custom-select-menu {
+  top: auto;
+  bottom: calc(100% + 6px);
+  max-height: 132px;
+  border-radius: 7px;
   z-index: 80;
+  overscroll-behavior: contain;
+  transform: translateY(6px);
+}
+.slot-editor .custom-option {
+  min-height: 24px;
+  padding: 5px 8px;
+  font-size: 11px;
+  line-height: 1.15;
+}
+.slot-editor .slot-day-select .custom-select-menu {
+  max-height: none;
+  overflow: visible;
+}
+.slot-editor .slot-day-select .custom-option:disabled {
+  display: none;
+}
+.slot-editor .slot-day-select .custom-option {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 .slot-editor .slot-time-inputs .custom-select-trigger {
   text-align: center;
+  padding: 4px 6px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
+.slot-editor .slot-time-inputs .custom-option {
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.slot-editor .slot-time-inputs .custom-select-trigger::after { content: none; }
 .slot-time-sep {
   font-size: 12px;
   color: var(--text-faint);
+  flex-shrink: 0;
+}
+
+/* The trailing "+" row that expands into the editor. Matches a list row. */
+.slot-add-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  margin-top: 2px;
+  height: var(--slot-row-h);
+  min-height: var(--slot-row-h);
+  max-height: var(--slot-row-h);
+  padding: 0;
+  border-radius: 7px;
+  border: 1px dashed rgba(102,102,102,0.3);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  line-height: 0;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.slot-add-row .slot-add-plus {
+  display: block;
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+}
+.slot-add-row:hover {
+  background: rgba(255,255,255,0.6);
+  border-color: rgba(15,15,112,0.28);
+  color: var(--navy);
+}
+
+/* Detail modal keeps its own stacked editor with a square "+" button. */
+.detail-slot-editor {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 36px;
+  align-items: stretch;
+  gap: 7px;
+  min-height: 0;
+  padding: 7px;
+}
+.detail-slot-editor .slot-inputs {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  flex: 1;
+  min-width: 0;
 }
 .slot-add-btn {
-  width: 42px;
+  width: 36px;
   min-height: 100%;
-  border-radius: 8px;
+  border-radius: 7px;
   border: 1px solid rgba(102,102,102,0.25);
   background: rgba(255,255,255,0.86);
   color: var(--navy);
-  font-size: 18px;
+  font-size: 17px;
   font-weight: 600;
   cursor: pointer;
-  flex-shrink: 0;
   align-self: stretch;
   transition: background 0.15s, transform 0.1s;
 }
@@ -811,54 +984,110 @@ body.selecting-slot {
 .slot-item {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 8px 8px 8px 10px;
-  border-radius: 8px;
-  border: 1px solid rgba(102,102,102,0.16);
-  background:
-    linear-gradient(145deg, rgba(255,255,255,0.82), rgba(255,255,255,0.56)),
-    rgba(246,244,239,0.48);
+  gap: 8px;
+  height: var(--slot-row-h);
+  min-height: var(--slot-row-h);
+  max-height: var(--slot-row-h);
+  padding: 3px 4px 3px 7px;
+  border-radius: 7px;
+  border: 1px solid transparent;
+  background: transparent;
   font-size: 12px;
-  cursor: pointer;
   transition: background 0.15s, border-color 0.15s;
 }
 .slot-item:hover {
-  background: #fff;
-  border-color: rgba(15,15,112,0.18);
+  background: rgba(255,255,255,0.72);
+  border-color: rgba(102,102,102,0.14);
 }
-.slot-meta {
+.slot-icon {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
-  min-width: 0;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--text-faint);
+}
+.slot-icon svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 .slot-day {
-  font-size: 10px;
-  letter-spacing: 0.12em;
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
   font-weight: 700;
   color: var(--navy);
   text-transform: uppercase;
-  min-width: 34px;
+  min-width: 28px;
 }
 .slot-time {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   font-size: 12px;
   font-weight: 600;
   color: var(--text-body);
   white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
+.slot-arrow {
+  color: var(--text-faint);
+  font-weight: 500;
+}
+/* Right-aligned end cell: the duration pill and the delete button share the
+   same spot; hovering the row swaps the pill out for the delete button. */
+.slot-end {
+  margin-left: auto;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-shrink: 0;
+  min-width: 42px;
+  min-height: 22px;
+}
+.slot-dur {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(102,102,102,0.1);
+  white-space: nowrap;
+  transition: opacity 0.12s;
+}
+.slot-item:hover .slot-dur { opacity: 0; }
 .slot-remove {
-  width: 24px;
-  height: 24px;
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 22px;
+  height: 22px;
   border: 1px solid transparent;
   border-radius: 6px;
-  background: rgba(246,244,239,0.7);
-  color: var(--text-muted);
+  background: transparent;
+  color: var(--text-faint);
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  position: relative;
+  flex-shrink: 0;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s, color 0.15s, background 0.15s, border-color 0.15s;
+}
+.slot-item:hover .slot-remove {
+  opacity: 1;
+  pointer-events: auto;
+}
+@media (hover: none) {
+  .slot-item .slot-dur { opacity: 0; }
+  .slot-item .slot-remove { opacity: 1; pointer-events: auto; }
 }
 .slot-remove span { display: none; }
 .slot-remove::before,
@@ -899,39 +1128,20 @@ body.selecting-slot {
 }
 .detail-slot-list { margin-bottom: 8px; }
 
-/* glass scrollbars */
+/* Hidden scrollbars — scroll still works, but no visible bar (and none at all
+   when the panel is short enough to fit its content). */
 .timetable-wrap,
 .panel-body,
 .side-panel {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(15,15,112,0.35) rgba(255,255,255,0.4);
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 .timetable-wrap::-webkit-scrollbar,
 .panel-body::-webkit-scrollbar,
 .side-panel::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-.timetable-wrap::-webkit-scrollbar-track,
-.panel-body::-webkit-scrollbar-track,
-.side-panel::-webkit-scrollbar-track {
-  background: rgba(255,255,255,0.5);
-  border: 1px solid rgba(15,15,112,0.08);
-  border-radius: 999px;
-  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.45);
-}
-.timetable-wrap::-webkit-scrollbar-thumb,
-.panel-body::-webkit-scrollbar-thumb,
-.side-panel::-webkit-scrollbar-thumb {
-  background: linear-gradient(180deg, rgba(15,15,112,0.28), rgba(15,15,112,0.45));
-  border-radius: 999px;
-  border: 2px solid rgba(255,255,255,0.6);
-  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.35);
-}
-.timetable-wrap::-webkit-scrollbar-thumb:hover,
-.panel-body::-webkit-scrollbar-thumb:hover,
-.side-panel::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(180deg, rgba(15,15,112,0.38), rgba(15,15,112,0.6));
+  width: 0;
+  height: 0;
+  display: none;
 }
 
 .custom-select {
@@ -981,12 +1191,15 @@ body.selecting-slot {
   box-shadow: 0 12px 28px rgba(15,15,112,0.12);
   max-height: 240px;
   overflow: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
   opacity: 0;
   transform: translateY(-6px);
   pointer-events: none;
   transition: opacity 0.15s, transform 0.15s;
   z-index: 40;
 }
+.custom-select-menu::-webkit-scrollbar { width: 0; height: 0; display: none; }
 .custom-select.open .custom-select-menu {
   opacity: 1;
   transform: translateY(0);
@@ -1273,12 +1486,6 @@ body.selecting-slot {
 }
 .btn-add:hover  { background: var(--navy-mid); }
 .btn-add:active { transform: scale(0.98); }
-.btn-delete-main {
-  background: var(--flex-red, #af3029);
-}
-.btn-delete-main:hover {
-  background: #9f2a24;
-}
 .btn-add[hidden] {
   display: none;
 }
@@ -1325,9 +1532,6 @@ body.selecting-slot {
 }
 .panel-body .btn-secondary#saveImage {
   margin-top: 6px;
-}
-.panel-body > .btn-add {
-  margin-top: auto;
 }
 .btn-ghost {
   padding: 6px 10px;
@@ -1740,17 +1944,11 @@ body.panel-modal-open .fab-github {
   }
   .side-panel.panel-open { transform: scale(1); }
 
-  .panel-header {
-    position: sticky;
-    top: 0;
-    background: var(--surface);
-    z-index: 5;
-  }
   .panel-close { display: inline-flex; }
 
   .panel-body {
-    padding: 16px 20px 18px;
-    max-height: calc(80vh - 72px);
+    padding: 18px 20px 18px;
+    max-height: 80vh;
     overflow: auto;
   }
 
@@ -2128,12 +2326,17 @@ body.panel-modal-open .fab-github {
   border-color: rgba(255,255,255,0.10);
   box-shadow: 0 28px 74px rgba(0,0,0,0.42), 0 4px 18px rgba(0,0,0,0.26);
 }
-:root[data-theme="dark"] .panel-header,
 :root[data-theme="dark"] .detail-header,
 :root[data-theme="dark"] .detail-footer {
   border-color: rgba(255,255,255,0.08);
 }
+:root[data-theme="dark"] .routine-title { color: var(--navy); }
+:root[data-theme="dark"] .meta-input { color: var(--text-body); }
+:root[data-theme="dark"] .meta-row {
+  border-color: rgba(255,255,255,0.09);
+}
 :root[data-theme="dark"] .panel-close,
+:root[data-theme="dark"] .panel-delete,
 :root[data-theme="dark"] .detail-close {
   background: rgba(255,255,255,0.055);
   border-color: rgba(255,255,255,0.12);
@@ -2174,20 +2377,29 @@ body.panel-modal-open .fab-github {
   color: var(--navy-mid);
 }
 
-:root[data-theme="dark"] .slot-editor,
-:root[data-theme="dark"] .slot-item {
+:root[data-theme="dark"] .slot-editor {
   border-color: rgba(255,255,255,0.10);
   background:
     linear-gradient(145deg, rgba(255,255,255,0.055), rgba(255,255,255,0.025)),
     rgba(255,255,255,0.035);
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.05);
 }
+:root[data-theme="dark"] .slot-item {
+  border-color: transparent;
+  background: transparent;
+}
 :root[data-theme="dark"] .slot-item:hover {
-  background: rgba(255,255,255,0.07);
-  border-color: rgba(232,228,216,0.18);
+  background: rgba(255,255,255,0.06);
+  border-color: rgba(255,255,255,0.1);
+}
+:root[data-theme="dark"] .slot-dur {
+  background: rgba(255,255,255,0.08);
+}
+:root[data-theme="dark"] .slot-remove {
+  background: transparent;
+  border-color: transparent;
 }
 :root[data-theme="dark"] .slot-add-btn,
-:root[data-theme="dark"] .slot-remove,
 :root[data-theme="dark"] .btn-secondary,
 :root[data-theme="dark"] .btn-ghost,
 :root[data-theme="dark"] .day-toggle {
@@ -2201,6 +2413,15 @@ body.panel-modal-open .fab-github {
   background: rgba(255,255,255,0.09);
   color: var(--navy-mid);
 }
+:root[data-theme="dark"] .slot-add-row {
+  border-color: rgba(255,255,255,0.16);
+  color: var(--text-muted);
+}
+:root[data-theme="dark"] .slot-add-row:hover {
+  background: rgba(255,255,255,0.06);
+  border-color: rgba(232,228,216,0.28);
+  color: var(--navy);
+}
 :root[data-theme="dark"] .btn-add {
   background: #2f2f2f;
   color: #f4f1e8;
@@ -2209,13 +2430,11 @@ body.panel-modal-open .fab-github {
 :root[data-theme="dark"] .btn-add:hover {
   background: #3a3a3a;
 }
-:root[data-theme="dark"] .btn-delete-main,
 :root[data-theme="dark"] .prompt-backdrop.confirm-mode .prompt-actions .btn-add {
   background: #8f2d28;
   border-color: rgba(255,255,255,0.08);
   color: #fff5ef;
 }
-:root[data-theme="dark"] .btn-delete-main:hover,
 :root[data-theme="dark"] .prompt-backdrop.confirm-mode .prompt-actions .btn-add:hover {
   background: #a3332e;
 }
@@ -2363,24 +2582,4 @@ body.panel-modal-open .fab-github {
 }
 :root[data-theme="dark"] .detail-delete:hover {
   color: var(--accent);
-}
-
-:root[data-theme="dark"] .timetable-wrap,
-:root[data-theme="dark"] .panel-body,
-:root[data-theme="dark"] .side-panel {
-  scrollbar-color: rgba(232,228,216,0.36) rgba(255,255,255,0.08);
-}
-:root[data-theme="dark"] .timetable-wrap::-webkit-scrollbar-track,
-:root[data-theme="dark"] .panel-body::-webkit-scrollbar-track,
-:root[data-theme="dark"] .side-panel::-webkit-scrollbar-track {
-  background: rgba(255,255,255,0.055);
-  border-color: rgba(255,255,255,0.06);
-  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.035);
-}
-:root[data-theme="dark"] .timetable-wrap::-webkit-scrollbar-thumb,
-:root[data-theme="dark"] .panel-body::-webkit-scrollbar-thumb,
-:root[data-theme="dark"] .side-panel::-webkit-scrollbar-thumb {
-  background: linear-gradient(180deg, rgba(232,228,216,0.22), rgba(232,228,216,0.38));
-  border-color: rgba(24,24,24,0.92);
-  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.08);
 }

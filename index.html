@@ -37,45 +37,38 @@
 
   <!-- SIDE PANEL -->
   <aside class="side-panel">
-    <div class="panel-header">
-      <div class="panel-title" id="panelTitle">Add Routine</div>
-      <div class="panel-tools">
-        <button class="panel-close" id="panelClose" type="button" aria-label="닫기">
-          <svg viewBox="0 0 12 12" aria-hidden="true"><line x1="2" y1="2" x2="10" y2="10"/><line x1="10" y1="2" x2="2" y2="10"/></svg>
-        </button>
-      </div>
+    <div class="panel-top-actions">
+      <button class="panel-delete" id="deleteRoutineBtn" type="button" aria-label="Delete routine" title="Delete routine" hidden>
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 4.5h10M6.5 4.5V3.2a1 1 0 0 1 1-1h1a1 1 0 0 1 1 1v1.3M5 4.5l.5 8a1 1 0 0 0 1 .9h3a1 1 0 0 0 1-.9l.5-8"/></svg>
+      </button>
+      <button class="panel-close" id="panelClose" type="button" aria-label="닫기">
+        <svg viewBox="0 0 12 12" aria-hidden="true"><line x1="2" y1="2" x2="10" y2="10"/><line x1="10" y1="2" x2="2" y2="10"/></svg>
+      </button>
     </div>
 
     <div class="panel-body">
-      <div class="field-group">
-        <label class="field-label">Name</label>
-        <input class="field-input" id="f-name" type="text"/>
-      </div>
-      <div class="field-group">
-        <label class="field-label" for="f-prof">Note</label>
-        <div class="field-control-row">
-          <input class="field-input" id="f-prof" type="text"/>
+      <input class="routine-title" id="f-name" type="text" placeholder="Routine name" autocomplete="off" aria-label="Routine name"/>
+
+      <div class="meta-list">
+        <div class="meta-row">
+          <span class="meta-label">Note</span>
+          <input class="meta-input" id="f-prof" type="text" placeholder="Add note" aria-label="Note"/>
           <label class="info-toggle" aria-label="Show note on routine card" title="Show on card">
             <input type="checkbox" id="toggleProf" data-info="prof" checked/>
             <span aria-hidden="true"></span>
           </label>
         </div>
-      </div>
-      <div class="field-group">
-        <label class="field-label" for="f-room">Place</label>
-        <div class="field-control-row">
-          <input class="field-input" id="f-room" type="text"/>
+        <div class="meta-row">
+          <span class="meta-label">Place</span>
+          <input class="meta-input" id="f-room" type="text" placeholder="Add place" aria-label="Place"/>
           <label class="info-toggle" aria-label="Show place on routine card" title="Show on card">
             <input type="checkbox" id="toggleRoom" data-info="room" checked/>
             <span aria-hidden="true"></span>
           </label>
         </div>
-      </div>
-
-      <div class="field-group">
-        <label class="field-label" for="f-credit">Priority</label>
-        <div class="field-control-row">
-          <input class="field-input" id="f-credit" type="number" min="1" max="6" style="text-align:center"/>
+        <div class="meta-row">
+          <span class="meta-label">Priority</span>
+          <input class="meta-input meta-input-num" id="f-credit" type="number" min="1" max="6" placeholder="—" aria-label="Priority"/>
           <label class="info-toggle" aria-label="Show priority on routine card" title="Show on card">
             <input type="checkbox" id="toggleCredit" data-info="credit"/>
             <span aria-hidden="true"></span>
@@ -86,39 +79,40 @@
       <div class="field-group">
         <label class="field-label">Schedule</label>
         <div class="slot-list" id="slotList">
-          <div class="slot-editor">
-            <div class="slot-inputs">
-              <div class="custom-select" data-placeholder="Select day">
-                <select class="native-select" id="f-day">
-                  <option value="" selected disabled>Select day</option>
-                  <option value="1">Monday</option>
-                  <option value="2">Tuesday</option>
-                  <option value="3">Wednesday</option>
-                  <option value="4">Thursday</option>
-                  <option value="5">Friday</option>
-                  <option value="6">Saturday</option>
-                  <option value="7">Sunday</option>
-                </select>
+          <div class="slot-items" id="slotItems"></div>
+          <div class="slot-editor" id="slotEditor" hidden>
+            <span class="slot-icon" aria-hidden="true"><svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.25"/><path d="M8 4.6V8l2.4 1.5"/></svg></span>
+            <div class="custom-select slot-day-select" data-placeholder="Day">
+              <select class="native-select" id="f-day">
+                <option value="" selected disabled>Day</option>
+                <option value="1">MON</option>
+                <option value="2">TUE</option>
+                <option value="3">WED</option>
+                <option value="4">THU</option>
+                <option value="5">FRI</option>
+                <option value="6">SAT</option>
+                <option value="7">SUN</option>
+              </select>
+              <button class="custom-select-trigger" type="button" aria-haspopup="listbox" aria-expanded="false"></button>
+              <div class="custom-select-menu" role="listbox"></div>
+            </div>
+            <div class="slot-time-inputs">
+              <div class="custom-select" data-placeholder="--:--">
+                <input class="native-time" id="f-start" type="time"/>
                 <button class="custom-select-trigger" type="button" aria-haspopup="listbox" aria-expanded="false"></button>
                 <div class="custom-select-menu" role="listbox"></div>
               </div>
-              <div class="slot-time-inputs">
-                <div class="custom-select" data-placeholder="--:--">
-                  <input class="native-time" id="f-start" type="time"/>
-                  <button class="custom-select-trigger" type="button" aria-haspopup="listbox" aria-expanded="false"></button>
-                  <div class="custom-select-menu" role="listbox"></div>
-                </div>
-                <span class="slot-time-sep">–</span>
-                <div class="custom-select" data-placeholder="--:--">
-                  <input class="native-time" id="f-end" type="time"/>
-                  <button class="custom-select-trigger" type="button" aria-haspopup="listbox" aria-expanded="false"></button>
-                  <div class="custom-select-menu" role="listbox"></div>
-                </div>
+              <span class="slot-time-sep" aria-hidden="true">→</span>
+              <div class="custom-select" data-placeholder="--:--">
+                <input class="native-time" id="f-end" type="time"/>
+                <button class="custom-select-trigger" type="button" aria-haspopup="listbox" aria-expanded="false"></button>
+                <div class="custom-select-menu" role="listbox"></div>
               </div>
             </div>
-            <button class="slot-add-btn" id="addSlotBtn" type="button" aria-label="Add time block">+</button>
           </div>
-          <div class="slot-items" id="slotItems"></div>
+          <button class="slot-add-row" id="addSlotTrigger" type="button" aria-label="Add time block">
+            <svg class="slot-add-plus" viewBox="0 0 16 16" aria-hidden="true"><line x1="8" y1="3.5" x2="8" y2="12.5"/><line x1="3.5" y1="8" x2="12.5" y2="8"/></svg>
+          </button>
         </div>
       </div>
 
@@ -163,8 +157,6 @@
         </div>
       </div>
 
-      <button class="btn-add" id="routineSubmitBtn" type="button">ADD ROUTINE</button>
-      <button class="btn-add btn-delete-main" id="deleteRoutineBtn" type="button" hidden>DELETE</button>
     </div>
   </aside>
 </div>
@@ -247,13 +239,13 @@
           </div>
         </div>
         <div class="day-toggle-group view-day-group" id="viewDayToggles" aria-label="Visible days">
-          <label class="day-toggle" aria-label="Monday"><input type="checkbox" value="1" checked/><span>Mon</span></label>
-          <label class="day-toggle" aria-label="Tuesday"><input type="checkbox" value="2" checked/><span>Tue</span></label>
-          <label class="day-toggle" aria-label="Wednesday"><input type="checkbox" value="3" checked/><span>Wed</span></label>
-          <label class="day-toggle" aria-label="Thursday"><input type="checkbox" value="4" checked/><span>Thu</span></label>
-          <label class="day-toggle" aria-label="Friday"><input type="checkbox" value="5" checked/><span>Fri</span></label>
-          <label class="day-toggle" aria-label="Saturday"><input type="checkbox" value="6"/><span>Sat</span></label>
-          <label class="day-toggle" aria-label="Sunday"><input type="checkbox" value="7"/><span>Sun</span></label>
+          <label class="day-toggle" aria-label="Monday"><input type="checkbox" value="1" checked/><span>MON</span></label>
+          <label class="day-toggle" aria-label="Tuesday"><input type="checkbox" value="2" checked/><span>TUE</span></label>
+          <label class="day-toggle" aria-label="Wednesday"><input type="checkbox" value="3" checked/><span>WED</span></label>
+          <label class="day-toggle" aria-label="Thursday"><input type="checkbox" value="4" checked/><span>THU</span></label>
+          <label class="day-toggle" aria-label="Friday"><input type="checkbox" value="5" checked/><span>FRI</span></label>
+          <label class="day-toggle" aria-label="Saturday"><input type="checkbox" value="6"/><span>SAT</span></label>
+          <label class="day-toggle" aria-label="Sunday"><input type="checkbox" value="7"/><span>SUN</span></label>
         </div>
       </div>
     </div>
@@ -361,13 +353,13 @@
               <div class="slot-inputs detail-slot-inputs">
                 <div class="custom-select" data-placeholder="Select day">
                   <select class="native-select" id="d-day">
-                    <option value="1">Monday</option>
-                    <option value="2">Tuesday</option>
-                    <option value="3">Wednesday</option>
-                    <option value="4">Thursday</option>
-                    <option value="5">Friday</option>
-                    <option value="6">Saturday</option>
-                    <option value="7">Sunday</option>
+                    <option value="1">MON</option>
+                    <option value="2">TUE</option>
+                    <option value="3">WED</option>
+                    <option value="4">THU</option>
+                    <option value="5">FRI</option>
+                    <option value="6">SAT</option>
+                    <option value="7">SUN</option>
                   </select>
                   <button class="custom-select-trigger" type="button" aria-haspopup="listbox" aria-expanded="false"></button>
                   <div class="custom-select-menu" role="listbox"></div>
@@ -378,7 +370,7 @@
                     <button class="custom-select-trigger" type="button" aria-haspopup="listbox" aria-expanded="false"></button>
                     <div class="custom-select-menu" role="listbox"></div>
                   </div>
-                  <span class="detail-time-sep">–</span>
+                  <span class="detail-time-sep" aria-hidden="true">→</span>
                   <div class="custom-select" data-placeholder="--:--">
                     <input class="native-time" id="d-end" type="time"/>
                     <button class="custom-select-trigger" type="button" aria-haspopup="listbox" aria-expanded="false"></button>

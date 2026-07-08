@@ -5,7 +5,7 @@ const VIEW_MIN_H = 6;
 const VIEW_MAX_H = 23;
 const ROW_H   = 54;                       // px per hour (must match CSS --row-h)
 const TIME_STEP = 15;                     // minutes for custom time selectors
-const DAY_LABELS = { 1: 'Mon', 2: 'Tue', 3: 'Wed', 4: 'Thu', 5: 'Fri', 6: 'Sat', 7: 'Sun' };
+const DAY_LABELS = { 1: 'MON', 2: 'TUE', 3: 'WED', 4: 'THU', 5: 'FRI', 6: 'SAT', 7: 'SUN' };
 const DAY_NAMES = {
   1: 'Monday',
   2: 'Tuesday',
@@ -215,7 +215,6 @@ let cardInfoSelection = CARD_INFO_DEFAULT.slice();
 let draftSlots = [];
 let detailSlots = [];
 let activeId = null;
-let draftSlotEditIndex = null;
 let livePreviewRaf = 0;
 let livePreviewSuspended = false;
 let routinePreviewCourse = null;
@@ -238,8 +237,6 @@ const newTableBtn = document.getElementById('newTable');
 const copyTableBtn = document.getElementById('copyTable');
 const renameTableBtn = document.getElementById('renameTable');
 const deleteTableBtn = document.getElementById('deleteTable');
-const panelTitle = document.getElementById('panelTitle');
-const routineSubmitBtn = document.getElementById('routineSubmitBtn');
 const deleteRoutineBtn = document.getElementById('deleteRoutineBtn');
 const swatches = document.getElementById('swatches');
 const customColorSwatch = document.getElementById('customColorSwatch');
@@ -283,7 +280,8 @@ const startInput = document.getElementById('f-start');
 const endInput = document.getElementById('f-end');
 const slotListEl = document.getElementById('slotList');
 const slotItemsEl = document.getElementById('slotItems');
-const addSlotBtn = document.getElementById('addSlotBtn');
+const slotEditorEl = document.getElementById('slotEditor');
+const addSlotTrigger = document.getElementById('addSlotTrigger');
 const detailStartInput = document.getElementById('d-start');
 const detailEndInput = document.getElementById('d-end');
 const detailNameInput = document.getElementById('d-name');
@@ -827,17 +825,21 @@ function getSelectedDays() {
   return Number.isFinite(day) ? [day] : [];
 }
 
-function setSelectedDays(days) {
-  if (!daySelect) return;
-  const day = Array.isArray(days) && days.length ? days[0] : '';
-  daySelect.value = day ? String(day) : '';
-  syncCustomPicker(daySelect);
-}
-
 function clearSelectedDays() {
   if (!daySelect) return;
   daySelect.value = '';
   syncCustomPicker(daySelect);
+}
+
+const SLOT_CLOCK_SVG = '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.25"/><path d="M8 4.6V8l2.4 1.5"/></svg>';
+
+function fmtSlotDuration(startMins, endMins) {
+  const mins = Math.max(0, endMins - startMins);
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  if (h && m) return `${h}h ${m}m`;
+  if (h) return `${h}h`;
+  return `${m}m`;
 }
 
 function renderSlotList(list, itemsContainer, emptyText) {
@@ -856,55 +858,29 @@ function renderSlotList(list, itemsContainer, emptyText) {
     const item = document.createElement('div');
     item.className = 'slot-item';
     item.dataset.index = String(idx);
+    const dur = fmtSlotDuration(timeToMins(slot.start), timeToMins(slot.end));
     item.innerHTML = `
-      <div class="slot-meta">
-        <span class="slot-day">${DAY_LABELS[slot.day] || ''}</span>
-        <span class="slot-time">${slot.start}–${slot.end}</span>
-      </div>
-      <button class="slot-remove" type="button" aria-label="Remove time block"><span aria-hidden="true">×</span></button>
+      <span class="slot-icon" aria-hidden="true">${SLOT_CLOCK_SVG}</span>
+      <span class="slot-day">${DAY_LABELS[slot.day] || ''}</span>
+      <span class="slot-time">
+        <span class="slot-t">${slot.start}</span>
+        <span class="slot-arrow" aria-hidden="true">→</span>
+        <span class="slot-t">${slot.end}</span>
+      </span>
+      <span class="slot-end">
+        <span class="slot-dur">${dur}</span>
+        <button class="slot-remove" type="button" aria-label="Remove time block"><span aria-hidden="true">×</span></button>
+      </span>
     `;
     itemsContainer.appendChild(item);
   });
 }
 
-function sameSlot(a, b) {
-  return Boolean(a && b && a.day === b.day && a.start === b.start && a.end === b.end);
-}
-
-function normalizeDraftSlotEditIndex(options = {}) {
-  if (options.editSlot) {
-    const idx = draftSlots.findIndex((slot) => sameSlot(slot, options.editSlot));
-    draftSlotEditIndex = idx >= 0 ? idx : null;
-    return;
-  }
-  if (Number.isFinite(options.editIndex)) {
-    draftSlotEditIndex = draftSlots.length
-      ? Math.max(0, Math.min(options.editIndex, draftSlots.length - 1))
-      : null;
-    return;
-  }
-  if (!draftSlots.length) {
-    draftSlotEditIndex = null;
-  } else if (!Number.isFinite(draftSlotEditIndex) || draftSlotEditIndex >= draftSlots.length) {
-    draftSlotEditIndex = 0;
-  }
-}
-
 function setDraftSlots(slots, options = {}) {
   draftSlots = normalizeSlots(slots);
-  normalizeDraftSlotEditIndex(options);
   renderSlotList(draftSlots, slotItemsEl, 'No times added');
   renderDraftOverlays();
   if (options.livePreview !== false) requestRoutineLivePreview();
-}
-
-function addDraftSlots(slots, options = {}) {
-  const nextSlots = normalizeSlots(slots);
-  const preferred = nextSlots[nextSlots.length - 1] || null;
-  setDraftSlots([...draftSlots, ...nextSlots], {
-    ...options,
-    editSlot: options.editSlot || preferred,
-  });
 }
 
 function clearDraftSlots() {
@@ -949,6 +925,33 @@ function buildSlotsFromAddInputs(options = {}) {
   return days.map((day) => ({ day, start, end }));
 }
 
+// The single slot currently held in the editor row (day + start + end), or null.
+function getPickerSlot() {
+  const slots = buildSlotsFromAddInputs({ focus: false });
+  return slots && slots.length ? slots[0] : null;
+}
+
+// Committed blocks plus the in-progress editor row. This is the source of truth
+// for previews and saving, so a single block works without clicking "+".
+function combinedDraftSlots() {
+  const list = draftSlots.slice();
+  const picker = getPickerSlot();
+  if (picker) list.push(picker);
+  return normalizeSlots(list);
+}
+
+function clearPickerInputs() {
+  clearSelectedDays();
+  if (startInput) {
+    startInput.value = '';
+    syncCustomPicker(startInput);
+  }
+  if (endInput) {
+    endInput.value = '';
+    syncCustomPicker(endInput);
+  }
+}
+
 function buildSlotFromDetailInputs() {
   const day = detailDaySelect ? parseInt(detailDaySelect.value, 10) : NaN;
   const start = detailStartInput ? detailStartInput.value : '';
@@ -979,54 +982,63 @@ if (toggleCredit) toggleCredit.addEventListener('change', () => { updateCardInfo
 setDraftSlots([]);
 setDetailSlots([]);
 
-function setAddSlotInputsFromSlot(slot) {
-  if (!slot) return;
-  setSelectedDays([slot.day]);
-  if (startInput) {
-    startInput.value = slot.start;
-    syncCustomPicker(startInput);
-  }
-  if (endInput) {
-    endInput.value = slot.end;
-    syncCustomPicker(endInput);
-  }
-}
-
+// Committed blocks are add-only: they can be removed, never re-opened for edit.
 if (slotItemsEl) {
   slotItemsEl.addEventListener('click', (e) => {
-    const removeBtn = e.target.closest('.slot-remove');
+    if (!e.target.closest('.slot-remove')) return;
     const item = e.target.closest('.slot-item');
     if (!item) return;
     const idx = parseInt(item.dataset.index, 10);
     if (!Number.isFinite(idx)) return;
-    if (removeBtn) {
-      const next = draftSlots.filter((_, i) => i !== idx);
-      const nextIndex = idx >= next.length ? next.length - 1 : idx;
-      setDraftSlots(next, { editIndex: nextIndex });
-      if (draftSlotEditIndex != null && draftSlots[draftSlotEditIndex]) {
-        setAddSlotInputsFromSlot(draftSlots[draftSlotEditIndex]);
-      } else {
-        clearSelectedDays();
-        if (startInput) {
-          startInput.value = '';
-          syncCustomPicker(startInput);
-        }
-        if (endInput) {
-          endInput.value = '';
-          syncCustomPicker(endInput);
-        }
-      }
-      return;
-    }
-    draftSlotEditIndex = idx;
-    setAddSlotInputsFromSlot(draftSlots[idx]);
+    setDraftSlots(draftSlots.filter((_, i) => i !== idx));
   });
 }
-if (addSlotBtn) {
-  addSlotBtn.addEventListener('click', () => {
-    const slots = buildSlotsFromAddInputs();
-    if (!slots) return;
-    addDraftSlots(slots);
+// The trailing "+" row expands in place into a single inline editor row.
+function focusSlotEditorDay() {
+  const trigger = slotEditorEl && slotEditorEl.querySelector('.custom-select-trigger');
+  if (trigger) requestAnimationFrame(() => trigger.focus());
+}
+function setSlotEditorOpen(open, options = {}) {
+  if (slotEditorEl) slotEditorEl.hidden = !open;
+  if (addSlotTrigger) addSlotTrigger.hidden = open;
+  if (!open) {
+    clearPickerInputs();
+    requestRoutineLivePreview();
+  } else if (options.focus !== false) {
+    focusSlotEditorDay();
+  }
+}
+if (addSlotTrigger) {
+  addSlotTrigger.addEventListener('click', () => setSlotEditorOpen(true));
+}
+// No Add/Cancel buttons: the row commits itself once day + start + end are all
+// set, then clears for the next entry. Otherwise it just drives the live preview.
+function handleSlotFieldChange() {
+  const slot = getPickerSlot();
+  if (!slot) {
+    requestRoutineLivePreview();
+    return;
+  }
+  clearPickerInputs();
+  setDraftSlots([...draftSlots, slot]);
+  focusSlotEditorDay();
+}
+// Collapse back to the "+" row when focus leaves the editor (discarding any
+// incomplete entry); the auto-commit refocus keeps focus inside, so it survives.
+if (slotEditorEl) {
+  slotEditorEl.addEventListener('focusout', (e) => {
+    if (slotEditorEl.contains(e.relatedTarget)) return;
+    requestAnimationFrame(() => {
+      if (slotEditorEl.hidden) return;
+      if (slotEditorEl.contains(document.activeElement)) return;
+      setSlotEditorOpen(false);
+    });
+  });
+  slotEditorEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !e.target.closest('.custom-select.open')) {
+      e.preventDefault();
+      setSlotEditorOpen(false);
+    }
   });
 }
 if (detailSlotItems) {
@@ -1062,6 +1074,14 @@ if (detailAddSlotBtn) {
     const slot = buildSlotFromDetailInputs();
     if (!slot) return;
     addDetailSlots([slot]);
+    if (detailStartInput) {
+      detailStartInput.value = '';
+      syncCustomPicker(detailStartInput);
+    }
+    if (detailEndInput) {
+      detailEndInput.value = '';
+      syncCustomPicker(detailEndInput);
+    }
   });
 }
 function setSwatchSelection(container, colorClass) {
@@ -2125,8 +2145,9 @@ function renderDraftOverlays() {
   timetableEl.querySelectorAll('.draft-slot').forEach((el) => el.remove());
   if (activeId != null) return;
   if (routinePreviewCourse) return;
-  if (!draftSlots.length) return;
-  draftSlots.forEach((slot) => {
+  const overlaySlots = combinedDraftSlots();
+  if (!overlaySlots.length) return;
+  overlaySlots.forEach((slot) => {
     if (!visibleDays.includes(slot.day)) return;
     const rawStart = timeToMins(slot.start);
     const rawEnd = timeToMins(slot.end);
@@ -2366,11 +2387,8 @@ function onDragEnd(e) {
   const slot = { day: dragDay, start: startStr, end: endStr };
   prepareFreshRoutineDraftFromDrag();
   syncRoutineEditorMode();
-  if (startInput) startInput.value = startStr;
-  if (endInput) endInput.value = endStr;
-  syncCustomPicker(startInput);
-  syncCustomPicker(endInput);
-  setSelectedDays([dragDay]);
+  // Drag commits the block directly as a chip; the editor row stays empty.
+  clearPickerInputs();
   setDraftSlots([slot]);
   openPanel({ focus: true, anchorRect: getSlotClientRect(slot) });
 }
@@ -2517,8 +2535,7 @@ function onCardDragEnd(e) {
   persistCurrentCourses();
   buildGrid();
   if (activeId === cd.course.id) {
-    setDraftSlots(cd.course.slots, { livePreview: false, editIndex: cd.slotIndex >= 0 ? cd.slotIndex : 0 });
-    setAddSlotInputsFromSlot(cd.course.slots && (cd.course.slots[draftSlotEditIndex] || cd.course.slots[0]));
+    setDraftSlots(cd.course.slots, { livePreview: false });
   }
 }
 
@@ -2550,7 +2567,6 @@ function cancelRoutineLivePreviewFrame() {
 }
 
 function clearRoutineEditState() {
-  draftSlotEditIndex = null;
   cancelRoutineLivePreviewFrame();
 }
 
@@ -2577,13 +2593,7 @@ function readRoutineEditorPreviewPayload() {
   const prof = profInput ? profInput.value.trim() : '';
   const room = roomInput ? roomInput.value.trim() : '';
   const creditRaw = creditInput ? parseInt(creditInput.value, 10) : NaN;
-  let slots = draftSlots.length ? draftSlots : [];
-
-  if (!slots.length) {
-    const fromInputs = buildSlotsFromAddInputs({ focus: false });
-    if (fromInputs) slots = fromInputs;
-  }
-  slots = normalizeSlots(slots);
+  const slots = combinedDraftSlots();
   if (!slots.length) return null;
   if (!isEditing && !hasRoutineEditorContent()) return null;
 
@@ -2632,7 +2642,7 @@ function applyRoutineLivePreview() {
 
 function requestRoutineLivePreview() {
   if (livePreviewSuspended) return;
-  if (activeId == null && !draftSlots.length) {
+  if (activeId == null && !draftSlots.length && !getPickerSlot()) {
     clearRoutinePreview({ rebuild: true });
     return;
   }
@@ -2640,29 +2650,8 @@ function requestRoutineLivePreview() {
   livePreviewRaf = requestAnimationFrame(applyRoutineLivePreview);
 }
 
-function updateSelectedDraftSlotFromInputs() {
-  if (livePreviewSuspended) return;
-  const slots = buildSlotsFromAddInputs({ focus: false });
-  if (!slots || !slots.length) {
-    requestRoutineLivePreview();
-    return;
-  }
-  const slot = slots[0];
-  const next = draftSlots.slice();
-  const idx = next.length
-    ? Math.max(0, Math.min(Number.isFinite(draftSlotEditIndex) ? draftSlotEditIndex : 0, next.length - 1))
-    : 0;
-  next[idx] = slot;
-  setDraftSlots(next, { editSlot: slot });
-}
-
 function syncRoutineEditorMode() {
   const editing = activeId != null;
-  if (panelTitle) panelTitle.textContent = editing ? 'Edit Routine' : 'Add Routine';
-  if (routineSubmitBtn) {
-    routineSubmitBtn.textContent = 'ADD ROUTINE';
-    routineSubmitBtn.hidden = editing;
-  }
   if (deleteRoutineBtn) deleteRoutineBtn.hidden = !editing;
   if (panelEl) panelEl.classList.toggle('is-editing', editing);
 }
@@ -2683,6 +2672,7 @@ function clearRoutineFields() {
     syncCustomPicker(endInput);
   }
   clearDraftSlots();
+  setSlotEditorOpen(false);
 }
 
 function startNewRoutine(options = {}) {
@@ -2709,57 +2699,6 @@ function blurRoutineEditorFocus() {
   if (panelEl && panelEl.contains(active) && typeof active.blur === 'function') active.blur();
 }
 
-function readRoutineEditorPayload() {
-  const name = nameInput ? nameInput.value.trim() : '';
-  const prof = profInput ? profInput.value.trim() : '';
-  const room = roomInput ? roomInput.value.trim() : '';
-  const creditRaw = creditInput ? parseInt(creditInput.value, 10) : NaN;
-
-  if (!name) {
-    if (nameInput) nameInput.focus();
-    return null;
-  }
-
-  let slots = draftSlots.length ? draftSlots : [];
-  if (!slots.length) {
-    const fromInputs = buildSlotsFromAddInputs();
-    if (!fromInputs) return null;
-    slots = fromInputs;
-  }
-  slots = normalizeSlots(slots);
-  if (!slots.length) return null;
-
-  return {
-    name,
-    prof,
-    room,
-    credit: Number.isFinite(creditRaw) ? Math.min(6, Math.max(1, creditRaw)) : 3,
-    color: selectedColor,
-    slots,
-  };
-}
-
-function saveRoutineFromPanel() {
-  cancelRoutineLivePreviewFrame();
-  if (activeId != null) return;
-  const payload = readRoutineEditorPayload();
-  if (!payload) return;
-
-  const target = { id: nextId++ };
-  applyRoutinePayloadToCourse(target, payload);
-  clearRoutinePreview();
-
-  courses.push(target);
-  persistCurrentCourses();
-  buildGrid();
-
-  activeId = null;
-  disarmRoutineDeleteShortcut();
-  clearRoutineEditState();
-  syncRoutineEditorMode();
-  clearRoutineFields();
-}
-
 function loadRoutineIntoPanel(course, options = {}) {
   if (!course) return;
   cancelRoutineLivePreviewFrame();
@@ -2773,9 +2712,9 @@ function loadRoutineIntoPanel(course, options = {}) {
   if (creditInput) creditInput.value = course.credit || '';
   selectedColor = course.color || 'c-navy';
   setSwatchSelection(swatches, selectedColor);
-  draftSlotEditIndex = course.slots && course.slots.length ? 0 : null;
-  setDraftSlots(course.slots || [], { livePreview: false, editIndex: draftSlotEditIndex });
-  setAddSlotInputsFromSlot(course.slots && course.slots[0]);
+  clearPickerInputs();
+  setSlotEditorOpen(false);
+  setDraftSlots(course.slots || [], { livePreview: false });
   livePreviewSuspended = false;
   syncRoutineEditorMode();
   armRoutineDeleteShortcut();
@@ -2881,11 +2820,6 @@ function saveDetailCourse() {
   closeDetail();
 }
 
-// ── Add course ───────────────────────────────────────
-function addCourse() {
-  saveRoutineFromPanel();
-}
-
 // ── Color picker ─────────────────────────────────────
 function pickColor(el) {
   selectedColor = el.dataset.color;
@@ -2956,12 +2890,11 @@ function pickDetailColor(el) {
 }
 
 // ── UI Events ────────────────────────────────────────
-if (routineSubmitBtn) routineSubmitBtn.addEventListener('click', saveRoutineFromPanel);
 [nameInput, profInput, roomInput, creditInput].forEach((input) => {
   if (input) input.addEventListener('input', requestRoutineLivePreview);
 });
 [daySelect, startInput, endInput].forEach((input) => {
-  if (input) input.addEventListener('change', updateSelectedDraftSlotFromInputs);
+  if (input) input.addEventListener('change', handleSlotFieldChange);
 });
 if (customColorSwatch) {
   customColorSwatch.addEventListener('click', (e) => {
