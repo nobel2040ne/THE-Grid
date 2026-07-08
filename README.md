@@ -1,6 +1,6 @@
 # <img src="assets/favicon.ico" alt="Weekly Rhythm icon" width="24" /> THE Grid
 
-Weekly Rhythm is a local-first weekly routine planner for repeating personal schedules. It is a static browser app built with plain `HTML`, `CSS`, and `JavaScript`.
+THE Grid is a local-first weekly routine planner for repeating personal schedules. It is a static browser app built with plain `HTML`, `CSS`, and `JavaScript`.
 
 The app stores schedules in browser `localStorage`; there is no account system, backend, or build step.
 
