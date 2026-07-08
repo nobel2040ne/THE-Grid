@@ -182,37 +182,92 @@ body {
 .timetable-scale {
   width: 100%;
   transform-origin: top left;
+  position: relative;
+}
+
+/* drag handles stuck to the timetable's own edges */
+.tt-resize-handle {
+  position: absolute;
+  z-index: 15;
+  touch-action: none;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease, background 0.15s ease;
+}
+.timetable-shell:hover .tt-resize-handle {
+  opacity: 1;
+  pointer-events: auto;
+}
+.tt-resize-right {
+  top: 0;
+  right: -1px;
+  width: 12px;
+  height: 100%;
+  cursor: ew-resize;
+}
+.tt-resize-bottom {
+  left: 0;
+  bottom: -1px;
+  height: 12px;
+  width: 100%;
+  cursor: ns-resize;
+}
+.tt-resize-right::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: 3px;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 42px;
+  max-height: 40%;
+  border-radius: 3px;
+  background: var(--accent, rgba(102,102,102,0.5));
+  opacity: 0.55;
+}
+.tt-resize-bottom::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 3px;
+  transform: translateX(-50%);
+  height: 3px;
+  width: 42px;
+  max-width: 40%;
+  border-radius: 3px;
+  background: var(--accent, rgba(102,102,102,0.5));
+  opacity: 0.55;
+}
+.tt-resize-corner {
+  right: -1px;
+  bottom: -1px;
+  width: 22px;
+  height: 22px;
+  cursor: nwse-resize;
+  z-index: 16;
+}
+.tt-resize-corner::before {
+  content: "";
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  width: 9px;
+  height: 9px;
+  border-right: 2.5px solid var(--accent, rgba(102,102,102,0.6));
+  border-bottom: 2.5px solid var(--accent, rgba(102,102,102,0.6));
+  border-radius: 0 0 3px 0;
+  opacity: 0.7;
+}
+.tt-resize-handle.dragging { opacity: 1; pointer-events: auto; }
+.tt-resize-handle.dragging::before { opacity: 1; }
+body.tt-resizing { user-select: none; }
+@media (max-width: 980px) {
+  .tt-resize-handle { display: none; }
 }
 .timetable-scale.is-scaled {
   width: max-content;
   transform: scale(var(--tt-scale, 1));
 }
-
-.resizer {
-  flex: 0 0 6px;
-  width: 6px;
-  cursor: col-resize;
-  position: relative;
-  touch-action: none;
-}
-.resizer::before {
-  content: "";
-  position: absolute;
-  left: 2px;
-  top: 45%;
-  bottom: 45%;
-  width: 2px;
-  border-radius: 2px;
-  background: rgba(102,102,102,0.35);
-}
-.resizer.dragging {
-  background: rgba(210,210,210,0.9);
-}
-body.resizing {
-  cursor: col-resize;
-  user-select: none;
-}
-
 
 .timetable {
   display: grid;
@@ -1920,7 +1975,6 @@ body.panel-modal-open .fab-github {
     padding: 16px 12px 12px;
     overflow: hidden;
   }
-  .resizer { display: none; }
 
   .side-panel {
     position: fixed;
@@ -2284,13 +2338,6 @@ body.panel-modal-open .fab-github {
   color: rgba(232,228,216,0.42);
   border-right-color: rgba(255,255,255,0.075);
 }
-:root[data-theme="dark"] .resizer::before {
-  background: rgba(255,255,255,0.18);
-}
-:root[data-theme="dark"] .resizer.dragging {
-  background: rgba(255,255,255,0.06);
-}
-
 :root[data-theme="dark"] .course-card {
   --card-bg: color-mix(in srgb, var(--card-accent) 18%, #1b1b1b);
   --card-border: color-mix(in srgb, var(--card-accent) 42%, rgba(255,255,255,0.14));

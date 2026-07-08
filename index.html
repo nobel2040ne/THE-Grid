@@ -29,11 +29,12 @@
         <div class="timetable" id="timetable">
         <!-- grid injected by JS -->
         </div>
+        <div class="tt-resize-handle tt-resize-right" id="ttResizeRight" role="separator" aria-orientation="vertical" aria-label="Resize timetable width" title="Drag to resize width"></div>
+        <div class="tt-resize-handle tt-resize-bottom" id="ttResizeBottom" role="separator" aria-orientation="horizontal" aria-label="Resize timetable height" title="Drag to resize height"></div>
+        <div class="tt-resize-handle tt-resize-corner" id="ttResizeCorner" aria-label="Resize timetable" title="Drag to resize"></div>
       </div>
     </div>
   </div>
-
-  <div class="resizer" id="resizer" role="separator" aria-orientation="vertical" aria-label="weekly schedule width resize"></div>
 
   <!-- SIDE PANEL -->
   <aside class="side-panel">
@@ -98,13 +99,13 @@
             </div>
             <div class="slot-time-inputs">
               <div class="custom-select" data-placeholder="--:--">
-                <input class="native-time" id="f-start" type="time"/>
+                <input class="native-time" id="f-start" type="text"/>
                 <button class="custom-select-trigger" type="button" aria-haspopup="listbox" aria-expanded="false"></button>
                 <div class="custom-select-menu" role="listbox"></div>
               </div>
               <span class="slot-time-sep" aria-hidden="true">→</span>
               <div class="custom-select" data-placeholder="--:--">
-                <input class="native-time" id="f-end" type="time"/>
+                <input class="native-time" id="f-end" type="text"/>
                 <button class="custom-select-trigger" type="button" aria-haspopup="listbox" aria-expanded="false"></button>
                 <div class="custom-select-menu" role="listbox"></div>
               </div>
@@ -227,13 +228,13 @@
       <div class="view-controls">
         <div class="slot-time-inputs">
           <div class="custom-select menu-up" data-placeholder="Start">
-            <input class="native-time" id="viewStart" type="time"/>
+            <input class="native-time" id="viewStart" type="text"/>
             <button class="custom-select-trigger" type="button" aria-haspopup="listbox" aria-expanded="false"></button>
             <div class="custom-select-menu" role="listbox"></div>
           </div>
           <span class="slot-time-sep">–</span>
           <div class="custom-select menu-up" data-placeholder="End">
-            <input class="native-time" id="viewEnd" type="time"/>
+            <input class="native-time" id="viewEnd" type="text"/>
             <button class="custom-select-trigger" type="button" aria-haspopup="listbox" aria-expanded="false"></button>
             <div class="custom-select-menu" role="listbox"></div>
           </div>
@@ -366,13 +367,13 @@
                 </div>
                 <div class="detail-time-inputs">
                   <div class="custom-select" data-placeholder="--:--">
-                    <input class="native-time" id="d-start" type="time"/>
+                    <input class="native-time" id="d-start" type="text"/>
                     <button class="custom-select-trigger" type="button" aria-haspopup="listbox" aria-expanded="false"></button>
                     <div class="custom-select-menu" role="listbox"></div>
                   </div>
                   <span class="detail-time-sep" aria-hidden="true">→</span>
                   <div class="custom-select" data-placeholder="--:--">
-                    <input class="native-time" id="d-end" type="time"/>
+                    <input class="native-time" id="d-end" type="text"/>
                     <button class="custom-select-trigger" type="button" aria-haspopup="listbox" aria-expanded="false"></button>
                     <div class="custom-select-menu" role="listbox"></div>
                   </div>
@@ -445,7 +446,7 @@
   </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<script src="assets/html2canvas.min.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

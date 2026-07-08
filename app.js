@@ -2,8 +2,12 @@
 const DEFAULT_START_H = 9;
 const DEFAULT_END_H = 21;
 const VIEW_MIN_H = 6;
-const VIEW_MAX_H = 23;
-const ROW_H   = 54;                       // px per hour (must match CSS --row-h)
+const VIEW_MAX_H = 23;          // latest start hour
+const VIEW_MAX_END_H = 29;      // latest end hour (29:00 = 5 AM next day)
+const DEFAULT_ROW_H = 54;                 // px per hour (must match CSS --row-h)
+const MIN_ROW_H = 34;
+const MAX_ROW_H = 120;
+let ROW_H = DEFAULT_ROW_H;                 // current px per hour (user-resizable)
 const TIME_STEP = 15;                     // minutes for custom time selectors
 const DAY_LABELS = { 1: 'MON', 2: 'TUE', 3: 'WED', 4: 'THU', 5: 'FRI', 6: 'SAT', 7: 'SUN' };
 const DAY_NAMES = {
@@ -315,8 +319,11 @@ function buildTimeOptions(startMins = VIEW_MIN_H * 60, endMins = VIEW_MAX_H * 60
   return times;
 }
 
-const TIME_OPTIONS = buildTimeOptions();
-const VIEW_TIME_OPTIONS = buildTimeOptions(VIEW_MIN_H * 60, VIEW_MAX_H * 60, 60);
+const TIME_OPTIONS = buildTimeOptions(VIEW_MIN_H * 60, VIEW_MAX_END_H * 60, TIME_STEP);
+// Start picker: 06:00 – 23:00. End picker: 07:00 – 29:00 (extended hours past
+// midnight, so 24:00 = midnight … 29:00 = 5 AM next day).
+const VIEW_START_OPTIONS = buildTimeOptions(VIEW_MIN_H * 60, VIEW_MAX_H * 60, 60);
+const VIEW_END_OPTIONS = buildTimeOptions((VIEW_MIN_H + 1) * 60, VIEW_MAX_END_H * 60, 60);
 
 function makeOptionButton({ value, label, selected, disabled }) {
   const btn = document.createElement('button');
@@ -649,8 +656,8 @@ initCustomSelect(timetableSelect, { placeholder: 'Select schedule' });
 initCustomSelect(paletteSelect, { placeholder: 'Select palette' });
 initCustomSelect(daySelect, { placeholder: 'Select day' });
 initCustomSelect(detailDaySelect, { placeholder: 'Select day' });
-initCustomTime(viewStartInput, { placeholder: 'Start', options: VIEW_TIME_OPTIONS });
-initCustomTime(viewEndInput, { placeholder: 'End', options: VIEW_TIME_OPTIONS });
+initCustomTime(viewStartInput, { placeholder: 'Start', options: VIEW_START_OPTIONS });
+initCustomTime(viewEndInput, { placeholder: 'End', options: VIEW_END_OPTIONS });
 initCustomTime(startInput, { placeholder: '--:--' });
 initCustomTime(endInput, { placeholder: '--:--' });
 initCustomTime(detailStartInput, { placeholder: '--:--' });
@@ -1388,6 +1395,76 @@ function applyPalette(paletteKey) {
   applyHeaderColor(selectedColor);
 }
 
+function triggerDownload(href, filename, revoke) {
+  const link = document.createElement('a');
+  link.href = href;
+  link.download = filename;
+  link.rel = 'noopener';
+  link.style.display = 'none';
+  // The anchor MUST be in the document for click() to trigger a download in
+  // Firefox/Safari (Chrome tolerates a detached node, others do not).
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  if (revoke) setTimeout(() => URL.revokeObjectURL(href), 1000);
+}
+
+function downloadCanvas(canvas, filename) {
+  // Prefer a Blob object-URL over a data: URL — large PNGs exceed the data:
+  // URL length some browsers accept for downloads.
+  if (canvas.toBlob) {
+    canvas.toBlob((blob) => {
+      if (blob) triggerDownload(URL.createObjectURL(blob), filename, true);
+      else triggerDownload(canvas.toDataURL('image/png'), filename);
+    }, 'image/png');
+  } else {
+    triggerDownload(canvas.toDataURL('image/png'), filename);
+  }
+}
+
+// html2canvas 1.4.1 cannot parse modern CSS color functions (color(),
+// color-mix(), oklab()…) that the dark theme's color-mix() rules compute to.
+// The browser computes those rules to `color(srgb r g b / a)`, so convert
+// that form to legacy rgb()/rgba() ourselves (a canvas fillStyle round-trip
+// does NOT downconvert — modern colors serialize back in modern form).
+const MODERN_COLOR_RE = /\b(?:color-mix|color|oklab|oklch|lab|lch|hwb)\((?:[^()]|\([^()]*\))*\)/g;
+
+function toLegacyColor(value) {
+  const m = /^color\(\s*srgb(?:-linear)?\s+([^\s]+)\s+([^\s]+)\s+([^\s/)]+)(?:\s*\/\s*([^\s)]+))?\s*\)$/.exec(value);
+  if (!m) return value;
+  const chan = (s) => {
+    const n = s.endsWith('%') ? parseFloat(s) / 100 : parseFloat(s);
+    return Math.round(Math.min(1, Math.max(0, Number.isFinite(n) ? n : 0)) * 255);
+  };
+  const [r, g, b] = [chan(m[1]), chan(m[2]), chan(m[3])];
+  let a = 1;
+  if (m[4] !== undefined) {
+    a = m[4].endsWith('%') ? parseFloat(m[4]) / 100 : parseFloat(m[4]);
+    a = Math.min(1, Math.max(0, Number.isFinite(a) ? a : 1));
+  }
+  return a >= 1 ? `rgb(${r}, ${g}, ${b})` : `rgba(${r}, ${g}, ${b}, ${a})`;
+}
+
+function inlineLegacyColors(sourceRoot, cloneRoot) {
+  const sources = [sourceRoot, ...sourceRoot.querySelectorAll('*')];
+  const clones = [cloneRoot, ...cloneRoot.querySelectorAll('*')];
+  sources.forEach((el, i) => {
+    const cloneEl = clones[i];
+    if (!cloneEl) return;
+    const cs = getComputedStyle(el);
+    for (let p = 0; p < cs.length; p++) {
+      const prop = cs[p];
+      if (prop.startsWith('--')) continue; // custom props aren't read by html2canvas
+      const value = cs.getPropertyValue(prop);
+      if (!value) continue;
+      MODERN_COLOR_RE.lastIndex = 0;
+      if (!MODERN_COLOR_RE.test(value)) continue;
+      MODERN_COLOR_RE.lastIndex = 0;
+      cloneEl.style.setProperty(prop, value.replace(MODERN_COLOR_RE, (m) => toLegacyColor(m)));
+    }
+  });
+}
+
 async function exportTimetableImage() {
   const timetableEl = document.getElementById('timetable');
   if (!timetableEl) return;
@@ -1399,13 +1476,12 @@ async function exportTimetableImage() {
         useCORS: true,
         scrollX: 0,
         scrollY: -window.scrollY,
+        onclone: (clonedDoc, clonedEl) => inlineLegacyColors(timetableEl, clonedEl),
       });
-      const link = document.createElement('a');
-      link.download = `weekly-schedule-${Date.now()}.png`;
-      link.href = canvas.toDataURL('image/png');
-      link.click();
+      downloadCanvas(canvas, `weekly-schedule-${Date.now()}.png`);
       return;
-    } catch {
+    } catch (err) {
+      console.error('html2canvas export failed, falling back to SVG', err);
       // fall through to SVG method
     }
   }
@@ -1447,10 +1523,7 @@ async function exportTimetableImage() {
     if (ctx) {
       ctx.scale(scale, scale);
       ctx.drawImage(img, 0, 0);
-      const link = document.createElement('a');
-      link.download = `weekly-schedule-${Date.now()}.png`;
-      link.href = canvas.toDataURL('image/png');
-      link.click();
+      downloadCanvas(canvas, `weekly-schedule-${Date.now()}.png`);
     }
     URL.revokeObjectURL(url);
   };
@@ -1705,10 +1778,11 @@ function getViewDurationHours() {
 
 function normalizeViewRange(startMins, endMins) {
   const minStart = VIEW_MIN_H * 60;
-  const maxEnd = VIEW_MAX_H * 60;
+  const maxStart = VIEW_MAX_H * 60;
+  const maxEnd = VIEW_MAX_END_H * 60;
   let start = Number.isFinite(startMins) ? startMins : DEFAULT_START_H * 60;
   let end = Number.isFinite(endMins) ? endMins : DEFAULT_END_H * 60;
-  start = Math.max(minStart, Math.min(start, maxEnd - 60));
+  start = Math.max(minStart, Math.min(start, maxStart));
   end = Math.max(start + 60, Math.min(end, maxEnd));
   return { start, end };
 }
@@ -1732,6 +1806,9 @@ function loadViewSettings() {
   viewStartMins = range.start;
   viewEndMins = range.end;
   visibleDays = normalizeVisibleDays(stored && stored.days);
+  const storedRowH = stored ? parseFloat(stored.rowHeight) : NaN;
+  ROW_H = clampNumber(Number.isFinite(storedRowH) ? storedRowH : DEFAULT_ROW_H, MIN_ROW_H, MAX_ROW_H);
+  document.documentElement.style.setProperty('--row-h', `${ROW_H}px`);
   syncViewControls();
 }
 
@@ -1740,7 +1817,16 @@ function persistViewSettings() {
     start: minsToTimeStr(viewStartMins),
     end: minsToTimeStr(viewEndMins),
     days: visibleDays,
+    rowHeight: ROW_H,
   }));
+}
+
+function setRowHeight(px) {
+  const next = clampNumber(Math.round(px), MIN_ROW_H, MAX_ROW_H);
+  if (next === ROW_H) return;
+  ROW_H = next;
+  document.documentElement.style.setProperty('--row-h', `${ROW_H}px`);
+  buildGrid();
 }
 
 function syncViewControls() {
@@ -3120,15 +3206,18 @@ const layoutEl = document.querySelector('.layout');
 const timetableShell = document.getElementById('timetableShell');
 const timetableWrap = document.getElementById('timetableWrap');
 const timetableScale = document.getElementById('timetableScale');
-const resizer = document.getElementById('resizer');
+const ttResizeRight = document.getElementById('ttResizeRight');
+const ttResizeBottom = document.getElementById('ttResizeBottom');
+const ttResizeCorner = document.getElementById('ttResizeCorner');
 const panelEl = document.querySelector('.side-panel');
 const panelClose = document.getElementById('panelClose');
 const panelBackdrop = document.getElementById('panelBackdrop');
 const fabAdd = document.getElementById('fabAdd');
 const fabCluster = document.querySelector('.fab-cluster');
 const mobileMq = window.matchMedia ? window.matchMedia('(max-width: 980px)') : null;
-let isResizingWidth = false;
 let mobileFitRafId = 0;
+let ttResizeState = null;   // { axis, startX, startY, startRowH, hours, handle }
+let ttResizeRafId = 0;
 
 function isMobilePanelMode() {
   return Boolean(mobileMq && mobileMq.matches);
@@ -3358,10 +3447,11 @@ function fitTimetableForMobile() {
 }
 
 function clampTimetableWidth(width) {
-  if (!layoutEl || !timetableShell || !resizer) return;
+  if (!layoutEl || !timetableShell) return;
   const layoutRect = layoutEl.getBoundingClientRect();
-  const resizerRect = resizer.getBoundingClientRect();
-  const maxWidth = Math.max(0, layoutRect.width - resizerRect.width);
+  // The side panel floats (position:absolute) over the timetable, so the shell
+  // may occupy the full layout width without pushing anything.
+  const maxWidth = Math.max(0, layoutRect.width);
   const effectiveMin = Math.min(MIN_TIMETABLE_W, maxWidth);
   const clamped = Math.max(effectiveMin, Math.min(width, maxWidth));
   timetableShell.style.flex = '0 0 auto';
@@ -3378,28 +3468,65 @@ function resetTimetableSizing() {
   resetMobileTimetableScale();
 }
 
-if (resizer && layoutEl && timetableShell) {
-  resizer.addEventListener('pointerdown', (e) => {
-    isResizingWidth = true;
-    resizer.classList.add('dragging');
-    document.body.classList.add('resizing');
-    if (resizer.setPointerCapture) resizer.setPointerCapture(e.pointerId);
-  });
+// Resize the timetable itself via its right / bottom / bottom-right corner edges.
+// The right axis grows the columns (shell width); the bottom axis grows the row
+// height (px per hour). The corner drives both at once.
+function startTtResize(handle, axis, e) {
+  if (!handle || isMobilePanelMode()) return;
+  e.preventDefault();
+  ttResizeState = {
+    axis,
+    startX: e.clientX,
+    startY: e.clientY,
+    startRowH: ROW_H,
+    startWidth: timetableShell ? timetableShell.getBoundingClientRect().width : 0,
+    hours: Math.max(1, getViewDurationHours()),
+    pendingRowH: ROW_H,
+    handle,
+  };
+  handle.classList.add('dragging');
+  document.body.classList.add('tt-resizing');
+  if (handle.setPointerCapture) {
+    try { handle.setPointerCapture(e.pointerId); } catch (_) {}
+  }
 }
 
+if (ttResizeRight) ttResizeRight.addEventListener('pointerdown', (e) => startTtResize(ttResizeRight, 'x', e));
+if (ttResizeBottom) ttResizeBottom.addEventListener('pointerdown', (e) => startTtResize(ttResizeBottom, 'y', e));
+if (ttResizeCorner) ttResizeCorner.addEventListener('pointerdown', (e) => startTtResize(ttResizeCorner, 'xy', e));
+
 window.addEventListener('pointermove', (e) => {
-  if (isResizingWidth && layoutEl) {
-    const layoutRect = layoutEl.getBoundingClientRect();
-    clampTimetableWidth(e.clientX - layoutRect.left);
+  if (ttResizeState) {
+    const st = ttResizeState;
+    if (st.axis === 'x' || st.axis === 'xy') {
+      clampTimetableWidth(st.startWidth + (e.clientX - st.startX));
+    }
+    if (st.axis === 'y' || st.axis === 'xy') {
+      st.pendingRowH = st.startRowH + (e.clientY - st.startY) / st.hours;
+      if (!ttResizeRafId) {
+        ttResizeRafId = requestAnimationFrame(() => {
+          ttResizeRafId = 0;
+          if (ttResizeState) setRowHeight(ttResizeState.pendingRowH);
+        });
+      }
+    }
   }
 });
 
 window.addEventListener('pointerup', (e) => {
-  if (isResizingWidth) {
-    isResizingWidth = false;
-    resizer.classList.remove('dragging');
-    document.body.classList.remove('resizing');
-    if (resizer.releasePointerCapture) resizer.releasePointerCapture(e.pointerId);
+  if (ttResizeState) {
+    const st = ttResizeState;
+    st.handle.classList.remove('dragging');
+    document.body.classList.remove('tt-resizing');
+    if (st.handle.releasePointerCapture) {
+      try { st.handle.releasePointerCapture(e.pointerId); } catch (_) {}
+    }
+    if (ttResizeRafId) { cancelAnimationFrame(ttResizeRafId); ttResizeRafId = 0; }
+    if (st.axis !== 'x') {
+      setRowHeight(st.pendingRowH);
+      persistViewSettings();
+    }
+    ttResizeState = null;
   }
 });
 
